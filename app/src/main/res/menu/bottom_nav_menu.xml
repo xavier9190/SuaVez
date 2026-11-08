@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/tasksFragment"
+        android:title="Tarefas" />
+
+    <item
+        android:id="@+id/preferencesFragment"
+        android:title="Preferências" />
+
+    <item
+        android:id="@+id/scoreboardFragment"
+        android:title="Placar" />
+
+    <item
+        android:id="@+id/roommatesFragment"
+        android:title="Moradores" />
+</menu>
