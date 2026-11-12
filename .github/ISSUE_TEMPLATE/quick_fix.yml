@@ -1,0 +1,35 @@
+name: "Quick Fix / Bug"
+description: "Ajuste rápido, correção pontual ou bug simples"
+title: "[Fix]: "
+labels: ["fix"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Descreva o que quebrou ou o que precisa ser corrigido pontualmente.
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Problema / Comportamento inesperado"
+      description: "O que está acontecendo de errado ou o que precisa de correção imediata?"
+      placeholder: "Ex: O botão de salvar trava ao clicar sem preencher o nome do jogo."
+    validations:
+      required: true
+  - type: textarea
+    id: solution_checklist
+    attributes:
+      label: "O que fazer para corrigir"
+      description: "Passos ou ações necessárias para a correção."
+      value: |
+        - [ ] Identificar causa raiz
+        - [ ] Aplicar correção no código
+        - [ ] Testar e validar
+    validations:
+      required: true
+  - type: textarea
+    id: affected_files
+    attributes:
+      label: "Arquivo(s) ou trecho(s) afetados (Opcional)"
+      placeholder: "Ex: MainActivity.kt ou BoardGameRepository.kt"
+    validations:
+      required: false

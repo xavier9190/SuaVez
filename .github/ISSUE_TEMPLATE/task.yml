@@ -1,0 +1,49 @@
+name: "Task"
+description: "Tarefa direta de desenvolvimento (sem burocracia ágil)"
+title: "[Task]: "
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Defina o que precisa ser feito e os passos práticos de execução.
+  - type: textarea
+    id: goal
+    attributes:
+      label: "Objetivo"
+      description: "Descreva em 1 ou 2 frases o que precisa ser feito ou entregue."
+      placeholder: "Ex: Implementar a tela de cadastro de novos jogos com validação de campos."
+    validations:
+      required: true
+  - type: textarea
+    id: checklist
+    attributes:
+      label: "Checklist de Ações"
+      description: "Passos técnicos para concluir a tarefa."
+      value: |
+        - [ ] Passo 1
+        - [ ] Passo 2
+        - [ ] Passo 3
+        - [ ] Testar localmente
+    validations:
+      required: true
+  - type: dropdown
+    id: type
+    attributes:
+      label: "Tipo Técnico"
+      description: "Selecione o foco principal desta task."
+      options:
+        - "feat (Nova funcionalidade)"
+        - "refactor (Melhoria ou refatoração de código)"
+        - "ui (Interface, layout ou estilização)"
+        - "docs (Documentação ou configuração)"
+    validations:
+      required: false
+  - type: textarea
+    id: notes
+    attributes:
+      label: "Observações / Referências (Opcional)"
+      description: "Links, arquivos impactados ou notas extras."
+      placeholder: "Ex: Verificar Documentacao_Sua_Vez.md ou telas no Figma."
+    validations:
+      required: false
