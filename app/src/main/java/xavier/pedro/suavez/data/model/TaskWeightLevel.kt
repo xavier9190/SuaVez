@@ -1,13 +1,17 @@
 package xavier.pedro.suavez.data.model
 
 enum class TaskWeightLevel(val points: Int, val label: String) {
-    LIGHT(1, "Leve / Rápida (1 pt)"),
-    MEDIUM(3, "Média / Moderada (3 pts)"),
-    HEAVY(5, "Pesada / Demorada (5 pts)");
+    LIGHT(2, "Leve · 2 pts"),
+    MEDIUM(5, "Média · 5 pts"),
+    HEAVY(8, "Pesada · 8 pts");
 
     companion object {
         fun fromPoints(points: Int): TaskWeightLevel {
-            return entries.firstOrNull { it.points == points } ?: MEDIUM
+            return when {
+                points <= 3 -> LIGHT
+                points <= 6 -> MEDIUM
+                else -> HEAVY
+            }
         }
 
         fun fromString(value: String?): TaskWeightLevel {

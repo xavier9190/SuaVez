@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Marca (Identidade noturna) -->
+    <color name="verde_casa">#2FC2AE</color>
+    <color name="verde_fundo">#8CE6D8</color>
+    <color name="nevoa">#16332F</color>
+    <color name="ambar_vez">#F5A524</color>
+    <color name="ambar_vez_suave">#3A2A10</color>
+    <color name="ambar_vez_texto">#FFD384</color>
+    <color name="ambar_traco">#F5A524</color>
+
+    <!-- Neutros -->
+    <color name="tinta">#E7F1EF</color>
+    <color name="tinta_suave">#9BB0B8</color>
+    <color name="tinta_apagada">#6E838C</color>
+    <color name="linha">#243945</color>
+    <color name="parede">#0E1A22</color>
+    <color name="superficie">#15252F</color>
+
+    <!-- Esforço e preferência -->
+    <color name="pref_odeio">#E2574C</color>
+    <color name="pref_odeio_texto">#FF8F86</color>
+    <color name="pref_tanto_faz">#8796A5</color>
+    <color name="pref_gosto">#3CC272</color>
+
+    <!-- Avatares -->
+    <color name="avatar_1">#1D4942</color>
+    <color name="avatar_2">#1F3B52</color>
+    <color name="avatar_3">#4B381B</color>
+    <color name="avatar_4">#3E284A</color>
+</resources>
