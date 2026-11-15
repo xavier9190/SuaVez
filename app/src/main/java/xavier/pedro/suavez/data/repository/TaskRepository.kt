@@ -81,7 +81,7 @@ class TaskRepository(
         categoriesCol(houseId).document(categoryId).delete().await()
     }
 
-    suspend fun saveFixedTask(
+    suspend fun saveRecurringTask(
         houseId: String,
         editingId: String?,
         title: String,
@@ -94,7 +94,7 @@ class TaskRepository(
         createInitialAssignmentInCurrentWeek: Boolean = true,
     ): Result<Task> = runCatching {
         val cleanTitle = title.trim()
-        require(cleanTitle.isNotEmpty()) { "O título da tarefa fixa não pode ser vazio." }
+        require(cleanTitle.isNotEmpty()) { "O título da tarefa recorrente não pode ser vazio." }
 
         val weightLevel = TaskWeightLevel.fromPoints(points)
         val categoriaId = category.name.lowercase(Locale.ROOT)
@@ -164,7 +164,7 @@ class TaskRepository(
             val batch = firestore.batch()
             batch.set(taskDoc, updates, SetOptions.merge())
 
-            // Sincronizar atribuições ainda não concluídas da semana atual vinculadas a esta tarefa fixa
+            // Sincronizar atribuições ainda não concluídas da semana atual vinculadas a esta tarefa recorrente
             val currentWeekAssignments = assignmentsCol(houseId)
                 .whereEqualTo("semana", semanaAtual)
                 .whereEqualTo("taskId", editingId)
@@ -202,12 +202,12 @@ class TaskRepository(
         }
     }
 
-    suspend fun deleteFixedTask(
+    suspend fun deleteRecurringTask(
         houseId: String,
-        fixedTaskId: String,
+        recurringTaskId: String,
         hardDelete: Boolean = true,
     ): Result<Unit> = runCatching {
-        val docRef = tasksCol(houseId).document(fixedTaskId)
+        val docRef = tasksCol(houseId).document(recurringTaskId)
         if (hardDelete) {
             docRef.delete().await()
         } else {

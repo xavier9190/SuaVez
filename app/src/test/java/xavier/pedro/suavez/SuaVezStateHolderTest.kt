@@ -187,14 +187,14 @@ class SuaVezStateHolderTest {
     }
 
     @Test
-    fun nonAdminCannotModifyFixedTasksOrDistribute() = runBlocking {
+    fun nonAdminCannotModifyRecurringTasksOrDistribute() = runBlocking {
         val state = SuaVezStateHolder()
         state.signInAs(TestProfile.MEMBER)
 
         assertFalse(state.isAdmin)
-        val initialFixedCount = state.fixedTasks.size
-        state.saveFixedTask(null, "Teste", TaskCategory.OUTRAS, 2, TaskFrequency.SEMANAL)
-        assertEquals(initialFixedCount, state.fixedTasks.size)
+        val initialRecurringCount = state.recurringTasks.size
+        state.saveRecurringTask(null, "Teste", TaskCategory.OUTRAS, 2, TaskFrequency.SEMANAL)
+        assertEquals(initialRecurringCount, state.recurringTasks.size)
 
         val initialOpenCount = state.openAssignments.size
         state.distributePendingTasks()
@@ -206,9 +206,9 @@ class SuaVezStateHolderTest {
         val state = SuaVezStateHolder()
         state.signInAs(TestProfile.ADMIN)
 
-        val firstFixed = state.fixedTasks.first()
-        state.setPreference(firstFixed.id, PreferenceLevel.GOSTO)
-        assertEquals(PreferenceLevel.GOSTO, state.getMyPreference(firstFixed.id))
+        val firstRecurring = state.recurringTasks.first()
+        state.setPreference(firstRecurring.id, PreferenceLevel.GOSTO)
+        assertEquals(PreferenceLevel.GOSTO, state.getMyPreference(firstRecurring.id))
 
         assertTrue(isHouseBalanced(listOf(34, 32, 31)))
         assertFalse(isHouseBalanced(listOf(40, 20)))
@@ -223,10 +223,10 @@ class SuaVezStateHolderTest {
         val state = SuaVezStateHolder()
         state.signInAs(TestProfile.ADMIN)
 
-        val initialFixedCount = state.fixedTasks.size
+        val initialRecurringCount = state.recurringTasks.size
         val initialOpenCount = state.openAssignments.size
 
-        state.saveFixedTask(
+        state.saveRecurringTask(
             editingId = null,
             title = "Limpar fogão",
             category = TaskCategory.LIMPEZA,
@@ -235,10 +235,10 @@ class SuaVezStateHolderTest {
             openInCurrentWeek = false,
             deadline = null,
         )
-        assertEquals(initialFixedCount + 1, state.fixedTasks.size)
+        assertEquals(initialRecurringCount + 1, state.recurringTasks.size)
         assertEquals(initialOpenCount, state.openAssignments.size)
 
-        state.saveFixedTask(
+        state.saveRecurringTask(
             editingId = null,
             title = "Aspirar sala",
             category = TaskCategory.LIMPEZA,
@@ -247,12 +247,12 @@ class SuaVezStateHolderTest {
             openInCurrentWeek = true,
             deadline = TaskDeadline.SABADO,
         )
-        assertEquals(initialFixedCount + 2, state.fixedTasks.size)
+        assertEquals(initialRecurringCount + 2, state.recurringTasks.size)
         assertEquals(initialOpenCount + 1, state.openAssignments.size)
         val opened = state.openAssignments.first()
         assertEquals("Aspirar sala", opened.titulo)
         assertEquals(TaskDeadline.SABADO, opened.deadline)
-        assertEquals(state.fixedTasks.last().id, opened.fixedTaskId)
+        assertEquals(state.recurringTasks.last().id, opened.recurringTaskId)
     }
 
     @Test

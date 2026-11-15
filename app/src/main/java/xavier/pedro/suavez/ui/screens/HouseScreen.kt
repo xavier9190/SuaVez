@@ -64,7 +64,7 @@ import xavier.pedro.suavez.ui.components.SuaVezRoundButtonVariant
 import xavier.pedro.suavez.ui.components.effortLabel
 import xavier.pedro.suavez.ui.components.toSuaVezIcon
 import xavier.pedro.suavez.ui.state.SuaVezStateHolder
-import xavier.pedro.suavez.ui.state.UiFixedTask
+import xavier.pedro.suavez.ui.state.UiRecurringTask
 import xavier.pedro.suavez.ui.state.UiMember
 import xavier.pedro.suavez.ui.theme.SuaVezDimens
 import xavier.pedro.suavez.ui.theme.SuaVezTheme
@@ -85,13 +85,13 @@ fun HouseScreen(
     val ranked = state.rankedMembers()
     val maxScore = ranked.maxOfOrNull { state.memberWeeklyPoints(it.uid) } ?: 0
     val nextInTurnUid = state.nextInTurnUid()
-    val fixedTasks = state.fixedTasks
+    val recurringTasks = state.recurringTasks
     val weeklyQuota = state.weeklyQuotaPerMember
 
     var copied by remember { mutableStateOf(false) }
     var managingMember by remember { mutableStateOf<UiMember?>(null) }
-    var showNewFixedSheet by remember { mutableStateOf(false) }
-    var editingFixedTask by remember { mutableStateOf<UiFixedTask?>(null) }
+    var showNewRecurringSheet by remember { mutableStateOf(false) }
+    var editingRecurringTask by remember { mutableStateOf<UiRecurringTask?>(null) }
 
     LaunchedEffect(copied) {
         if (copied) {
@@ -346,7 +346,7 @@ fun HouseScreen(
             }
         }
 
-        // 5. Tarefas fixas da casa
+        // 5. Tarefas recorrentes da casa
         Column(verticalArrangement = Arrangement.spacedBy(SuaVezDimens.CardGap)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -355,7 +355,7 @@ fun HouseScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Tarefas fixas da casa",
+                        text = "Tarefas recorrentes da casa",
                         style = typo.title,
                         color = colors.ink,
                     )
@@ -370,7 +370,7 @@ fun HouseScreen(
                     SuaVezRoundButton(
                         icon = SuaVezIconType.PLUS,
                         contentDescription = "Criar atividade",
-                        onClick = { showNewFixedSheet = true },
+                        onClick = { showNewRecurringSheet = true },
                         variant = SuaVezRoundButtonVariant.Primary,
                     )
                 }
@@ -386,7 +386,7 @@ fun HouseScreen(
                 icon = SuaVezIconType.STAR,
             )
 
-            fixedTasks.forEach { task ->
+            recurringTasks.forEach { task ->
                 val level = task.effortLevel
                 SuaVezCard(
                     contentPadding = PaddingValues(
@@ -442,7 +442,7 @@ fun HouseScreen(
                                     )
                                     .clip(CircleShape)
                                     .semantics { contentDescription = "Editar ${task.titulo}" }
-                                    .clickable(role = Role.Button) { editingFixedTask = task },
+                                    .clickable(role = Role.Button) { editingRecurringTask = task },
                                 contentAlignment = Alignment.Center,
                             ) {
                                 SuaVezIcon(
@@ -459,7 +459,7 @@ fun HouseScreen(
             if (isAdmin) {
                 SuaVezButton(
                     text = "Criar atividade",
-                    onClick = { showNewFixedSheet = true },
+                    onClick = { showNewRecurringSheet = true },
                     variant = SuaVezButtonVariant.Dashed,
                     leadingContent = {
                         SuaVezIcon(
@@ -489,34 +489,34 @@ fun HouseScreen(
         )
     }
 
-    if (showNewFixedSheet) {
+    if (showNewRecurringSheet) {
         ActivityFormSheet(
             isAdmin = isAdmin,
-            onDismiss = { showNewFixedSheet = false },
+            onDismiss = { showNewRecurringSheet = false },
             onCreateWeeklyTask = { title, cat, pts, deadline ->
-                showNewFixedSheet = false
+                showNewRecurringSheet = false
                 state.addWeeklyTask(title, cat, pts, deadline)
             },
             onSaveRecurringTask = { title, cat, pts, freq, openInCurrentWeek, deadline ->
-                showNewFixedSheet = false
-                state.saveFixedTask(null, title, cat, pts, freq, openInCurrentWeek, deadline)
+                showNewRecurringSheet = false
+                state.saveRecurringTask(null, title, cat, pts, freq, openInCurrentWeek, deadline)
             },
         )
     }
 
-    val taskToEdit = editingFixedTask
+    val taskToEdit = editingRecurringTask
     if (taskToEdit != null) {
         ActivityFormSheet(
             isAdmin = isAdmin,
             editingTask = taskToEdit,
-            onDismiss = { editingFixedTask = null },
+            onDismiss = { editingRecurringTask = null },
             onSaveRecurringTask = { title, cat, pts, freq, _, _ ->
-                editingFixedTask = null
-                state.saveFixedTask(taskToEdit.id, title, cat, pts, freq)
+                editingRecurringTask = null
+                state.saveRecurringTask(taskToEdit.id, title, cat, pts, freq)
             },
             onDeleteRecurringTask = { toDelete ->
-                editingFixedTask = null
-                state.deleteFixedTask(toDelete.id)
+                editingRecurringTask = null
+                state.deleteRecurringTask(toDelete.id)
             },
         )
     }

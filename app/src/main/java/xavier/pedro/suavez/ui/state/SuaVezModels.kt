@@ -72,7 +72,7 @@ data class UiMember(
     val preferences: Map<String, PreferenceLevel> = emptyMap(),
 )
 
-data class UiFixedTask(
+data class UiRecurringTask(
     val id: String,
     val titulo: String,
     val categoria: TaskCategory,
@@ -86,7 +86,7 @@ data class UiFixedTask(
 
 data class UiAssignment(
     val id: String,
-    val fixedTaskId: String?,
+    val recurringTaskId: String?,
     val titulo: String,
     val categoria: TaskCategory,
     val pontos: Int,
@@ -137,9 +137,9 @@ fun avatarIndexFor(id: String): Int {
     return abs(id.hashCode()) % 4
 }
 
-fun calculateWeeklyQuota(fixedTasks: List<UiFixedTask>, memberCount: Int): Int {
+fun calculateWeeklyQuota(recurringTasks: List<UiRecurringTask>, memberCount: Int): Int {
     if (memberCount <= 0) return 0
-    val total = fixedTasks.sumOf { it.pontos }
+    val total = recurringTasks.sumOf { it.pontos }
     return (total.toDouble() / memberCount).roundToInt()
 }
 

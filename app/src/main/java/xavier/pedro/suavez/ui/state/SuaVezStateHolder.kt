@@ -79,7 +79,7 @@ class SuaVezStateHolder(
     var members by mutableStateOf<List<UiMember>>(emptyList())
         private set
 
-    var fixedTasks by mutableStateOf<List<UiFixedTask>>(emptyList())
+    var recurringTasks by mutableStateOf<List<UiRecurringTask>>(emptyList())
         private set
 
     var assignments by mutableStateOf<List<UiAssignment>>(emptyList())
@@ -114,7 +114,7 @@ class SuaVezStateHolder(
         get() = assignments.filter { (it.assigneeUid == null || it.justClaimedInSession) && !it.isDone }
 
     val weeklyQuotaPerMember: Int
-        get() = calculateWeeklyQuota(fixedTasks, members.size.coerceAtLeast(1))
+        get() = calculateWeeklyQuota(recurringTasks, members.size.coerceAtLeast(1))
 
     val myDonePoints: Int
         get() = myAssignments.filter { it.isDone }.sumOf { it.pontos }
@@ -241,7 +241,7 @@ class SuaVezStateHolder(
             val result = gateway.loadOrBootstrap(profile)
             result.onSuccess { session ->
                 currentUser = session.user.toUiUser()
-                fixedTasks = emptyList()
+                recurringTasks = emptyList()
                 assignments = emptyList()
                 val house = session.house
                 if (house == null) {
@@ -268,7 +268,7 @@ class SuaVezStateHolder(
         currentUser = UiUser(uid = newUid, nome = name.trim(), email = email.trim())
         currentHouse = null
         members = emptyList()
-        fixedTasks = emptyList()
+        recurringTasks = emptyList()
         assignments = emptyList()
         activeTab = MainTab.HOUSE
         destination = AppDestination.NoHouse
@@ -279,7 +279,7 @@ class SuaVezStateHolder(
         currentUser = null
         currentHouse = null
         members = emptyList()
-        fixedTasks = emptyList()
+        recurringTasks = emptyList()
         assignments = emptyList()
         activeTab = MainTab.TASKS
         destination = AppDestination.Login
@@ -296,7 +296,7 @@ class SuaVezStateHolder(
             codigoConvite = "SV-$codeSuffix",
             semanaNumero = 43,
         )
-        val initialFixed = defaultFixedTasksSeed()
+        val initialRecurring = defaultRecurringTasksSeed()
         currentHouse = house
         members = listOf(
             UiMember(
@@ -306,11 +306,11 @@ class SuaVezStateHolder(
                 monthlyPoints = 0,
             ),
         )
-        fixedTasks = initialFixed
-        assignments = initialFixed.take(3).mapIndexed { idx, task ->
+        recurringTasks = initialRecurring
+        assignments = initialRecurring.take(3).mapIndexed { idx, task ->
             UiAssignment(
                 id = "a_${nextId()}",
-                fixedTaskId = task.id,
+                recurringTaskId = task.id,
                 titulo = task.titulo,
                 categoria = task.categoria,
                 pontos = task.pontos,
@@ -407,7 +407,7 @@ class SuaVezStateHolder(
     ) {
         val newTask = UiAssignment(
             id = "a_${nextId()}",
-            fixedTaskId = null,
+            recurringTaskId = null,
             titulo = title.trim(),
             categoria = category,
             pontos = points,
@@ -435,7 +435,7 @@ class SuaVezStateHolder(
         val updatedMap = mutableMapOf<String, String>()
 
         for (task in open) {
-            val refTaskId = task.fixedTaskId
+            val refTaskId = task.recurringTaskId
             fun prefOf(m: UiMember): PreferenceLevel =
                 if (refTaskId != null) m.preferences[refTaskId] ?: PreferenceLevel.TANTO_FAZ
                 else PreferenceLevel.TANTO_FAZ
@@ -474,11 +474,11 @@ class SuaVezStateHolder(
 
     // --- Preferências ---
 
-    fun setPreference(fixedTaskId: String, level: PreferenceLevel) {
+    fun setPreference(recurringTaskId: String, level: PreferenceLevel) {
         val uid = currentUser?.uid ?: return
         members = members.map { member ->
             if (member.uid == uid) {
-                member.copy(preferences = member.preferences + (fixedTaskId to level))
+                member.copy(preferences = member.preferences + (recurringTaskId to level))
             } else {
                 member
             }
@@ -486,13 +486,13 @@ class SuaVezStateHolder(
         showMessage("Preferência salva")
     }
 
-    fun getMyPreference(fixedTaskId: String): PreferenceLevel {
-        return currentMember?.preferences?.get(fixedTaskId) ?: PreferenceLevel.TANTO_FAZ
+    fun getMyPreference(recurringTaskId: String): PreferenceLevel {
+        return currentMember?.preferences?.get(recurringTaskId) ?: PreferenceLevel.TANTO_FAZ
     }
 
-    // --- Casa: tarefas fixas e moradores ---
+    // --- Casa: tarefas recorrentes e moradores ---
 
-    fun saveFixedTask(
+    fun saveRecurringTask(
         editingId: String?,
         title: String,
         category: TaskCategory,
@@ -504,18 +504,18 @@ class SuaVezStateHolder(
         if (!isAdmin) return
         val cleanTitle = title.trim()
         if (editingId == null) {
-            val newTask = UiFixedTask(
+            val newTask = UiRecurringTask(
                 id = "f_${nextId()}",
                 titulo = cleanTitle,
                 categoria = category,
                 pontos = points,
                 frequencia = frequency,
             )
-            fixedTasks = fixedTasks + newTask
+            recurringTasks = recurringTasks + newTask
             if (openInCurrentWeek) {
                 val newAssignment = UiAssignment(
                     id = "a_${nextId()}",
-                    fixedTaskId = newTask.id,
+                    recurringTaskId = newTask.id,
                     titulo = cleanTitle,
                     categoria = category,
                     pontos = points,
@@ -528,7 +528,7 @@ class SuaVezStateHolder(
                 showMessage("Atividade recorrente \"$cleanTitle\" criada")
             }
         } else {
-            fixedTasks = fixedTasks.map { task ->
+            recurringTasks = recurringTasks.map { task ->
                 if (task.id == editingId) {
                     task.copy(
                         titulo = cleanTitle,
@@ -545,10 +545,10 @@ class SuaVezStateHolder(
         }
     }
 
-    fun deleteFixedTask(fixedTaskId: String) {
+    fun deleteRecurringTask(recurringTaskId: String) {
         if (!isAdmin) return
-        fixedTasks = fixedTasks.filterNot { it.id == fixedTaskId }
-        showMessage("Tarefa fixa excluída")
+        recurringTasks = recurringTasks.filterNot { it.id == recurringTaskId }
+        showMessage("Tarefa recorrente excluída")
     }
 
     fun promoteToAdmin(memberUid: String) {
@@ -610,7 +610,7 @@ class SuaVezStateHolder(
     private fun clearHouseForCurrentUser(feedback: String) {
         currentHouse = null
         members = emptyList()
-        fixedTasks = emptyList()
+        recurringTasks = emptyList()
         assignments = emptyList()
         activeTab = MainTab.HOUSE
         destination = AppDestination.NoHouse
@@ -651,15 +651,15 @@ class SuaVezStateHolder(
             semanaNumero = 43,
         )
 
-        val f1 = UiFixedTask("f_1", "Lavar banheiro", TaskCategory.LIMPEZA, 8, TaskFrequency.SEMANAL, TaskIconHint.DROP)
-        val f2 = UiFixedTask("f_2", "Comprar sabão", TaskCategory.COMPRAS, 5, TaskFrequency.QUINZENAL, TaskIconHint.CART)
-        val f3 = UiFixedTask("f_3", "Pagar conta de luz", TaskCategory.CONTAS, 3, TaskFrequency.MENSAL, TaskIconHint.RECEIPT)
-        val f4 = UiFixedTask("f_4", "Tirar o lixo", TaskCategory.LIMPEZA, 2, TaskFrequency.DIARIA, TaskIconHint.TRASH)
-        val f5 = UiFixedTask("f_5", "Limpar a geladeira", TaskCategory.LIMPEZA, 5, TaskFrequency.SEMANAL, TaskIconHint.FRIDGE)
-        val f6 = UiFixedTask("f_6", "Organizar cozinha", TaskCategory.LIMPEZA, 8, TaskFrequency.SEMANAL, TaskIconHint.DROP)
-        val f7 = UiFixedTask("f_7", "Passar pano na sala", TaskCategory.LIMPEZA, 5, TaskFrequency.SEMANAL, TaskIconHint.DROP)
-        val f8 = UiFixedTask("f_8", "Regar as plantas", TaskCategory.OUTRAS, 3, TaskFrequency.SEMANAL, TaskIconHint.LEAF)
-        fixedTasks = listOf(f1, f2, f3, f4, f5, f6, f7, f8)
+        val f1 = UiRecurringTask("f_1", "Lavar banheiro", TaskCategory.LIMPEZA, 8, TaskFrequency.SEMANAL, TaskIconHint.DROP)
+        val f2 = UiRecurringTask("f_2", "Comprar sabão", TaskCategory.COMPRAS, 5, TaskFrequency.QUINZENAL, TaskIconHint.CART)
+        val f3 = UiRecurringTask("f_3", "Pagar conta de luz", TaskCategory.CONTAS, 3, TaskFrequency.MENSAL, TaskIconHint.RECEIPT)
+        val f4 = UiRecurringTask("f_4", "Tirar o lixo", TaskCategory.LIMPEZA, 2, TaskFrequency.DIARIA, TaskIconHint.TRASH)
+        val f5 = UiRecurringTask("f_5", "Limpar a geladeira", TaskCategory.LIMPEZA, 5, TaskFrequency.SEMANAL, TaskIconHint.FRIDGE)
+        val f6 = UiRecurringTask("f_6", "Organizar cozinha", TaskCategory.LIMPEZA, 8, TaskFrequency.SEMANAL, TaskIconHint.DROP)
+        val f7 = UiRecurringTask("f_7", "Passar pano na sala", TaskCategory.LIMPEZA, 5, TaskFrequency.SEMANAL, TaskIconHint.DROP)
+        val f8 = UiRecurringTask("f_8", "Regar as plantas", TaskCategory.OUTRAS, 3, TaskFrequency.SEMANAL, TaskIconHint.LEAF)
+        recurringTasks = listOf(f1, f2, f3, f4, f5, f6, f7, f8)
 
         val anaPrefs = mapOf(
             "f_1" to PreferenceLevel.ODEIO,
@@ -700,7 +700,7 @@ class SuaVezStateHolder(
             // Admin (2 pendentes + 1 concluída)
             UiAssignment(
                 id = "a_1",
-                fixedTaskId = "f_1",
+                recurringTaskId = "f_1",
                 titulo = "Lavar o banheiro",
                 categoria = TaskCategory.LIMPEZA,
                 pontos = 8,
@@ -711,7 +711,7 @@ class SuaVezStateHolder(
             ),
             UiAssignment(
                 id = "a_2",
-                fixedTaskId = "f_4",
+                recurringTaskId = "f_4",
                 titulo = "Tirar o lixo",
                 categoria = TaskCategory.LIMPEZA,
                 pontos = 2,
@@ -723,7 +723,7 @@ class SuaVezStateHolder(
             ),
             UiAssignment(
                 id = "a_3",
-                fixedTaskId = "f_2",
+                recurringTaskId = "f_2",
                 titulo = "Comprar sabão",
                 categoria = TaskCategory.COMPRAS,
                 pontos = 3,
@@ -736,7 +736,7 @@ class SuaVezStateHolder(
             // Tarefas abertas (3)
             UiAssignment(
                 id = "a_open_1",
-                fixedTaskId = "f_5",
+                recurringTaskId = "f_5",
                 titulo = "Limpar a geladeira",
                 categoria = TaskCategory.LIMPEZA,
                 pontos = 5,
@@ -747,7 +747,7 @@ class SuaVezStateHolder(
             ),
             UiAssignment(
                 id = "a_open_2",
-                fixedTaskId = "f_3",
+                recurringTaskId = "f_3",
                 titulo = "Pagar conta de luz",
                 categoria = TaskCategory.CONTAS,
                 pontos = 3,
@@ -759,7 +759,7 @@ class SuaVezStateHolder(
             ),
             UiAssignment(
                 id = "a_open_3",
-                fixedTaskId = "f_8",
+                recurringTaskId = "f_8",
                 titulo = "Regar as plantas",
                 categoria = TaskCategory.OUTRAS,
                 pontos = 1,
@@ -785,10 +785,10 @@ class SuaVezStateHolder(
         )
     }
 
-    private fun defaultFixedTasksSeed(): List<UiFixedTask> = listOf(
-        UiFixedTask("f_1", "Lavar banheiro", TaskCategory.LIMPEZA, 8, TaskFrequency.SEMANAL, TaskIconHint.DROP),
-        UiFixedTask("f_2", "Comprar sabão", TaskCategory.COMPRAS, 5, TaskFrequency.QUINZENAL, TaskIconHint.CART),
-        UiFixedTask("f_3", "Pagar conta de luz", TaskCategory.CONTAS, 3, TaskFrequency.MENSAL, TaskIconHint.RECEIPT),
-        UiFixedTask("f_4", "Tirar o lixo", TaskCategory.LIMPEZA, 2, TaskFrequency.DIARIA, TaskIconHint.TRASH),
+    private fun defaultRecurringTasksSeed(): List<UiRecurringTask> = listOf(
+        UiRecurringTask("f_1", "Lavar banheiro", TaskCategory.LIMPEZA, 8, TaskFrequency.SEMANAL, TaskIconHint.DROP),
+        UiRecurringTask("f_2", "Comprar sabão", TaskCategory.COMPRAS, 5, TaskFrequency.QUINZENAL, TaskIconHint.CART),
+        UiRecurringTask("f_3", "Pagar conta de luz", TaskCategory.CONTAS, 3, TaskFrequency.MENSAL, TaskIconHint.RECEIPT),
+        UiRecurringTask("f_4", "Tirar o lixo", TaskCategory.LIMPEZA, 2, TaskFrequency.DIARIA, TaskIconHint.TRASH),
     )
 }

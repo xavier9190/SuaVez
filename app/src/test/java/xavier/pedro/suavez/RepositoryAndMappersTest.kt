@@ -23,7 +23,7 @@ import xavier.pedro.suavez.data.repository.toFirestoreMember
 import xavier.pedro.suavez.data.repository.toFirestoreTask
 import xavier.pedro.suavez.data.repository.toFirestoreUser
 import xavier.pedro.suavez.data.repository.toUiAssignment
-import xavier.pedro.suavez.data.repository.toUiFixedTask
+import xavier.pedro.suavez.data.repository.toUiRecurringTask
 import xavier.pedro.suavez.data.repository.toUiHouse
 import xavier.pedro.suavez.data.repository.toUiMember
 import xavier.pedro.suavez.data.repository.toUiUser
@@ -93,14 +93,14 @@ class RepositoryAndMappersTest {
             categoriaId = "limpeza",
             categoriaNome = "Limpeza",
         )
-        val uiFixedTask = task.toUiFixedTask()
-        assertEquals("t_1", uiFixedTask.id)
-        assertEquals(TaskCategory.LIMPEZA, uiFixedTask.categoria)
-        assertEquals(8, uiFixedTask.pontos)
-        assertEquals(TaskFrequency.QUINZENAL, uiFixedTask.frequencia)
-        assertEquals(TaskWeightLevel.HEAVY, uiFixedTask.effortLevel)
+        val uiRecurringTask = task.toUiRecurringTask()
+        assertEquals("t_1", uiRecurringTask.id)
+        assertEquals(TaskCategory.LIMPEZA, uiRecurringTask.categoria)
+        assertEquals(8, uiRecurringTask.pontos)
+        assertEquals(TaskFrequency.QUINZENAL, uiRecurringTask.frequencia)
+        assertEquals(TaskWeightLevel.HEAVY, uiRecurringTask.effortLevel)
 
-        val backToTask = uiFixedTask.toFirestoreTask(criadaPorUid = "u_bruno")
+        val backToTask = uiRecurringTask.toFirestoreTask(criadaPorUid = "u_bruno")
         assertEquals("QUINZENAL", backToTask.frequencia)
         assertEquals("HEAVY", backToTask.pesoNivel)
         assertEquals("limpeza", backToTask.categoriaId)
@@ -124,7 +124,7 @@ class RepositoryAndMappersTest {
         )
         val uiAssignment = assignment.toUiAssignment()
         assertEquals("a_1", uiAssignment.id)
-        assertEquals("t_1", uiAssignment.fixedTaskId)
+        assertEquals("t_1", uiAssignment.recurringTaskId)
         assertEquals(TaskCategory.LIMPEZA, uiAssignment.categoria)
         assertEquals(TaskDeadline.SABADO, uiAssignment.deadline)
         assertEquals("acumulada", uiAssignment.subtitleOverride)
@@ -139,7 +139,7 @@ class RepositoryAndMappersTest {
 
     @Test
     fun greedyDistributionRespectsPreferencesAndBalancesLoad() {
-        val fixedTasks = listOf(
+        val recurringTasks = listOf(
             Task(id = "t_1", titulo = "Lavar banheiro", peso = 8),
             Task(id = "t_2", titulo = "Limpar geladeira", peso = 5),
             Task(id = "t_3", titulo = "Tirar lixo", peso = 2),
@@ -166,7 +166,7 @@ class RepositoryAndMappersTest {
 
         val decisions = AssignmentRepository.computeGreedyDistribution(
             weekAssignments = openAssignments,
-            fixedTasks = fixedTasks,
+            recurringTasks = recurringTasks,
             members = members,
             monthKey = "2026-11",
         )

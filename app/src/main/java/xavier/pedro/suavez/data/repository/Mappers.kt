@@ -13,7 +13,7 @@ import xavier.pedro.suavez.ui.state.TaskCategory
 import xavier.pedro.suavez.ui.state.TaskDeadline
 import xavier.pedro.suavez.ui.state.TaskFrequency
 import xavier.pedro.suavez.ui.state.UiAssignment
-import xavier.pedro.suavez.ui.state.UiFixedTask
+import xavier.pedro.suavez.ui.state.UiRecurringTask
 import xavier.pedro.suavez.ui.state.UiHouse
 import xavier.pedro.suavez.ui.state.UiMember
 import xavier.pedro.suavez.ui.state.UiUser
@@ -160,10 +160,10 @@ fun UiMember.toFirestoreMember(
     preferences = preferences.mapValues { (_, level) -> level.name },
 )
 
-fun Task.toUiFixedTask(): UiFixedTask {
+fun Task.toUiRecurringTask(): UiRecurringTask {
     val category = categoriaNome.ifBlank { categoriaId }.toTaskCategory()
     val frequency = frequencia.toTaskFrequency()
-    return UiFixedTask(
+    return UiRecurringTask(
         id = id,
         titulo = titulo,
         categoria = category,
@@ -173,7 +173,7 @@ fun Task.toUiFixedTask(): UiFixedTask {
     )
 }
 
-fun UiFixedTask.toFirestoreTask(
+fun UiRecurringTask.toFirestoreTask(
     criadaPorUid: String = "",
     descricao: String = "",
     ativa: Boolean = true,
@@ -205,7 +205,7 @@ fun Assignment.toUiAssignment(justClaimedInSession: Boolean = false): UiAssignme
     }
     return UiAssignment(
         id = id,
-        fixedTaskId = taskId,
+        recurringTaskId = taskId,
         titulo = titulo,
         categoria = category,
         pontos = peso,
@@ -235,7 +235,7 @@ fun UiAssignment.toFirestoreAssignment(
     return Assignment(
         id = id,
         semana = semana,
-        taskId = fixedTaskId,
+        taskId = recurringTaskId,
         titulo = titulo,
         descricao = subtitleOverride.orEmpty(),
         peso = pontos,
@@ -245,7 +245,7 @@ fun UiAssignment.toFirestoreAssignment(
         status = statusEnum.name,
         responsavelUid = assigneeUid,
         responsavelNome = responsavelNome,
-        ehAvulsa = fixedTaskId == null,
+        ehAvulsa = recurringTaskId == null,
         ehRollover = ehRollover,
         urgente = urgente,
         semanaOrigem = semanaOrigem,
