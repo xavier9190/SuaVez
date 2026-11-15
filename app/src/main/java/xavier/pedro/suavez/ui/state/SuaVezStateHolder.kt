@@ -4,10 +4,50 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import xavier.pedro.suavez.data.model.House
 import xavier.pedro.suavez.data.model.HouseRole
+import xavier.pedro.suavez.data.model.Member
 import xavier.pedro.suavez.data.model.PreferenceLevel
+import xavier.pedro.suavez.data.model.User
+import xavier.pedro.suavez.data.repository.toUiHouse
+import xavier.pedro.suavez.data.repository.toUiMember
+import xavier.pedro.suavez.data.repository.toUiUser
 import kotlin.math.abs
 import kotlin.math.roundToInt
+
+/**
+ * Perfis padrão fixos de teste usados na tela inicial para validar a persistência
+ * no Cloud Firestore antes da integração com Firebase Auth (Etapa 3).
+ */
+enum class TestProfile(
+    val uid: String,
+    val nome: String,
+    val email: String,
+    val role: HouseRole,
+) {
+    ADMIN(
+        uid = "u_admin",
+        nome = "Admin (Teste)",
+        email = "admin@suavez.app",
+        role = HouseRole.ADMIN,
+    ),
+    MEMBER(
+        uid = "u_membro",
+        nome = "Membro (Teste)",
+        email = "membro@suavez.app",
+        role = HouseRole.MEMBER,
+    ),
+}
+
+data class TestProfileSession(
+    val user: User,
+    val house: House?,
+    val members: List<Member>,
+)
+
+fun interface TestProfileGateway {
+    suspend fun loadOrBootstrap(profile: TestProfile): Result<TestProfileSession>
+}
 
 data class SnackbarFeedback(
     val id: Long = System.nanoTime(),
@@ -17,9 +57,14 @@ data class SnackbarFeedback(
 )
 
 @Stable
-class SuaVezStateHolder {
+class SuaVezStateHolder(
+    private val testProfileGateway: TestProfileGateway? = null,
+) {
 
     var destination by mutableStateOf<AppDestination>(AppDestination.Login)
+        private set
+
+    var isAuthenticating by mutableStateOf(false)
         private set
 
     var activeTab by mutableStateOf(MainTab.TASKS)
@@ -174,28 +219,48 @@ class SuaVezStateHolder {
         }
     }
 
-    // --- Autenticação ---
+    // --- Autenticação (perfis padrão de teste) ---
 
-    fun signInWithEmail(email: String) {
-        val cleanName = when {
-            email.contains("bruno", ignoreCase = true) -> "Bruno Silva"
-            email.contains("carla", ignoreCase = true) -> "Carla Dias"
-            else -> "Ana Costa"
+    suspend fun signInAs(profile: TestProfile) {
+        val gateway = testProfileGateway
+        if (gateway == null) {
+            loadDemoHouseForUser(
+                UiUser(
+                    uid = profile.uid,
+                    nome = profile.nome,
+                    email = profile.email,
+                ),
+            )
+            activeTab = MainTab.TASKS
+            destination = AppDestination.Main
+            return
         }
-        val uid = when {
-            email.contains("bruno", ignoreCase = true) -> "u_bruno"
-            email.contains("carla", ignoreCase = true) -> "u_carla"
-            else -> "u_ana"
-        }
-        loadDemoHouseForUser(UiUser(uid = uid, nome = cleanName, email = email.trim()))
-        activeTab = MainTab.TASKS
-        destination = AppDestination.Main
-    }
 
-    fun signInWithGoogle() {
-        loadDemoHouseForUser(UiUser(uid = "u_ana", nome = "Ana Costa", email = "ana@suavez.app"))
-        activeTab = MainTab.TASKS
-        destination = AppDestination.Main
+        isAuthenticating = true
+        try {
+            val result = gateway.loadOrBootstrap(profile)
+            result.onSuccess { session ->
+                currentUser = session.user.toUiUser()
+                fixedTasks = emptyList()
+                assignments = emptyList()
+                val house = session.house
+                if (house == null) {
+                    currentHouse = null
+                    members = emptyList()
+                    activeTab = MainTab.HOUSE
+                    destination = AppDestination.NoHouse
+                } else {
+                    currentHouse = house.toUiHouse()
+                    members = session.members.map { it.toUiMember() }
+                    activeTab = MainTab.TASKS
+                    destination = AppDestination.Main
+                }
+            }.onFailure { error ->
+                showMessage("Erro ao entrar: ${error.localizedMessage ?: "tente novamente"}")
+            }
+        } finally {
+            isAuthenticating = false
+        }
     }
 
     fun createAccount(name: String, email: String) {
@@ -609,15 +674,15 @@ class SuaVezStateHolder {
 
         members = listOf(
             UiMember(
-                uid = "u_ana",
-                nome = if (user.uid == "u_ana") user.nome else "Ana",
+                uid = TestProfile.ADMIN.uid,
+                nome = if (user.uid == TestProfile.ADMIN.uid) user.nome else "Admin",
                 role = HouseRole.ADMIN,
                 monthlyPoints = 31, // + 3 concluídos na semana = 34 pts
                 preferences = anaPrefs,
             ),
             UiMember(
-                uid = "u_bruno",
-                nome = if (user.uid == "u_bruno") user.nome else "Bruno",
+                uid = TestProfile.MEMBER.uid,
+                nome = if (user.uid == TestProfile.MEMBER.uid) user.nome else "Membro",
                 role = HouseRole.MEMBER,
                 monthlyPoints = 18, // + 14 concluídos = 32 pts
                 preferences = mapOf("f_1" to PreferenceLevel.GOSTO),
@@ -632,7 +697,7 @@ class SuaVezStateHolder {
         )
 
         assignments = listOf(
-            // Ana (2 pendentes + 1 concluída)
+            // Admin (2 pendentes + 1 concluída)
             UiAssignment(
                 id = "a_1",
                 fixedTaskId = "f_1",
@@ -640,7 +705,7 @@ class SuaVezStateHolder {
                 categoria = TaskCategory.LIMPEZA,
                 pontos = 8,
                 deadline = TaskDeadline.SABADO,
-                assigneeUid = "u_ana",
+                assigneeUid = TestProfile.ADMIN.uid,
                 isDone = false,
                 iconHint = TaskIconHint.DROP,
             ),
@@ -652,7 +717,7 @@ class SuaVezStateHolder {
                 pontos = 2,
                 deadline = TaskDeadline.HOJE,
                 subtitleOverride = "diária",
-                assigneeUid = "u_ana",
+                assigneeUid = TestProfile.ADMIN.uid,
                 isDone = false,
                 iconHint = TaskIconHint.TRASH,
             ),
@@ -664,7 +729,7 @@ class SuaVezStateHolder {
                 pontos = 3,
                 deadline = TaskDeadline.HOJE,
                 subtitleOverride = "feita ontem",
-                assigneeUid = "u_ana",
+                assigneeUid = TestProfile.ADMIN.uid,
                 isDone = true,
                 iconHint = TaskIconHint.CART,
             ),
@@ -705,12 +770,12 @@ class SuaVezStateHolder {
                 iconHint = TaskIconHint.LEAF,
             ),
             // Concluídas dos outros moradores para compor o ritmo da casa (13 de 18 = 72% -> 14 ao concluir mais 1)
-            UiAssignment("a_b1", "f_6", "Organizar cozinha", TaskCategory.LIMPEZA, 8, TaskDeadline.HOJE, "feita", "u_bruno", isDone = true, iconHint = TaskIconHint.DROP),
-            UiAssignment("a_b2", "f_4", "Tirar o lixo (seg)", TaskCategory.LIMPEZA, 2, TaskDeadline.HOJE, "feita", "u_bruno", isDone = true, iconHint = TaskIconHint.TRASH),
-            UiAssignment("a_b3", "f_4", "Tirar o lixo (ter)", TaskCategory.LIMPEZA, 2, TaskDeadline.HOJE, "feita", "u_bruno", isDone = true, iconHint = TaskIconHint.TRASH),
-            UiAssignment("a_b4", "f_8", "Regar jardim", TaskCategory.OUTRAS, 2, TaskDeadline.HOJE, "feita", "u_bruno", isDone = true, iconHint = TaskIconHint.LEAF),
-            UiAssignment("a_b5", "f_4", "Reciclar embalagens", TaskCategory.LIMPEZA, 2, TaskDeadline.HOJE, "feita", "u_bruno", isDone = true, iconHint = TaskIconHint.TRASH),
-            UiAssignment("a_b6", null, "Trocar filtro de água", TaskCategory.OUTRAS, 2, TaskDeadline.HOJE, "feita", "u_bruno", isDone = true, iconHint = TaskIconHint.DROP),
+            UiAssignment("a_b1", "f_6", "Organizar cozinha", TaskCategory.LIMPEZA, 8, TaskDeadline.HOJE, "feita", TestProfile.MEMBER.uid, isDone = true, iconHint = TaskIconHint.DROP),
+            UiAssignment("a_b2", "f_4", "Tirar o lixo (seg)", TaskCategory.LIMPEZA, 2, TaskDeadline.HOJE, "feita", TestProfile.MEMBER.uid, isDone = true, iconHint = TaskIconHint.TRASH),
+            UiAssignment("a_b3", "f_4", "Tirar o lixo (ter)", TaskCategory.LIMPEZA, 2, TaskDeadline.HOJE, "feita", TestProfile.MEMBER.uid, isDone = true, iconHint = TaskIconHint.TRASH),
+            UiAssignment("a_b4", "f_8", "Regar jardim", TaskCategory.OUTRAS, 2, TaskDeadline.HOJE, "feita", TestProfile.MEMBER.uid, isDone = true, iconHint = TaskIconHint.LEAF),
+            UiAssignment("a_b5", "f_4", "Reciclar embalagens", TaskCategory.LIMPEZA, 2, TaskDeadline.HOJE, "feita", TestProfile.MEMBER.uid, isDone = true, iconHint = TaskIconHint.TRASH),
+            UiAssignment("a_b6", null, "Trocar filtro de água", TaskCategory.OUTRAS, 2, TaskDeadline.HOJE, "feita", TestProfile.MEMBER.uid, isDone = true, iconHint = TaskIconHint.DROP),
             UiAssignment("a_c1", "f_7", "Passar pano na sala", TaskCategory.LIMPEZA, 5, TaskDeadline.HOJE, "feita", "u_carla", isDone = true, iconHint = TaskIconHint.DROP),
             UiAssignment("a_c2", "f_2", "Comprar detergente", TaskCategory.COMPRAS, 3, TaskDeadline.HOJE, "feita", "u_carla", isDone = true, iconHint = TaskIconHint.CART),
             UiAssignment("a_c3", "f_3", "Pagar internet", TaskCategory.CONTAS, 3, TaskDeadline.HOJE, "feita", "u_carla", isDone = true, iconHint = TaskIconHint.RECEIPT),

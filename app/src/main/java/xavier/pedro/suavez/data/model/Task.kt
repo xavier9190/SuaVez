@@ -12,6 +12,7 @@ data class Task(
     val descricao: String = "",
     val peso: Int = TaskWeightLevel.MEDIUM.points,
     val pesoNivel: String = TaskWeightLevel.MEDIUM.name,
+    val frequencia: String = "SEMANAL",
     val categoriaId: String = "",
     val categoriaNome: String = "",
     val ativa: Boolean = true,

@@ -1,32 +1,40 @@
 package xavier.pedro.suavez
 
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import xavier.pedro.suavez.data.model.House
 import xavier.pedro.suavez.data.model.HouseRole
+import xavier.pedro.suavez.data.model.Member
 import xavier.pedro.suavez.data.model.PreferenceLevel
 import xavier.pedro.suavez.data.model.TaskWeightLevel
+import xavier.pedro.suavez.data.model.User
 import xavier.pedro.suavez.ui.state.AppDestination
 import xavier.pedro.suavez.ui.state.MainTab
 import xavier.pedro.suavez.ui.state.SuaVezStateHolder
 import xavier.pedro.suavez.ui.state.TaskCategory
 import xavier.pedro.suavez.ui.state.TaskDeadline
 import xavier.pedro.suavez.ui.state.TaskFrequency
+import xavier.pedro.suavez.ui.state.TestProfile
+import xavier.pedro.suavez.ui.state.TestProfileGateway
+import xavier.pedro.suavez.ui.state.TestProfileSession
 import xavier.pedro.suavez.ui.state.isHouseBalanced
 
 class SuaVezStateHolderTest {
 
     @Test
-    fun loginAndNavigationFlow() {
+    fun loginAndNavigationFlow() = runBlocking {
         val state = SuaVezStateHolder()
         assertEquals(AppDestination.Login, state.destination)
 
-        state.signInWithGoogle()
+        state.signInAs(TestProfile.ADMIN)
         assertEquals(AppDestination.Main, state.destination)
         assertEquals(MainTab.TASKS, state.activeTab)
+        assertEquals(TestProfile.ADMIN.uid, state.currentUser?.uid)
         assertTrue(state.isAdmin)
 
         state.openOpenTasks()
@@ -40,6 +48,78 @@ class SuaVezStateHolderTest {
         assertEquals(MainTab.HOUSE, state.activeTab)
         assertTrue(state.navigateBack())
         assertEquals(MainTab.TASKS, state.activeTab)
+
+        // Troca de perfil via Sair da conta
+        state.signOut()
+        assertEquals(AppDestination.Login, state.destination)
+        assertNull(state.currentUser)
+
+        state.signInAs(TestProfile.MEMBER)
+        assertEquals(AppDestination.Main, state.destination)
+        assertEquals(TestProfile.MEMBER.uid, state.currentUser?.uid)
+        assertFalse(state.isAdmin)
+    }
+
+    @Test
+    fun testProfileWithoutHouseNavigatesToNoHouse() = runBlocking {
+        val gateway = TestProfileGateway { profile ->
+            Result.success(
+                TestProfileSession(
+                    user = User(
+                        uid = profile.uid,
+                        nome = profile.nome,
+                        email = profile.email,
+                        currentHouseId = null,
+                    ),
+                    house = null,
+                    members = emptyList(),
+                ),
+            )
+        }
+        val state = SuaVezStateHolder(testProfileGateway = gateway)
+
+        state.signInAs(TestProfile.MEMBER)
+
+        assertEquals(AppDestination.NoHouse, state.destination)
+        assertEquals(MainTab.HOUSE, state.activeTab)
+        assertNull(state.currentHouse)
+        assertEquals(TestProfile.MEMBER.uid, state.currentUser?.uid)
+    }
+
+    @Test
+    fun testProfileWithPersistedHouseLoadsHouseAndRoleFromGateway() = runBlocking {
+        val gateway = TestProfileGateway { profile ->
+            val house = House(
+                id = "house_suavez_teste",
+                nome = "Casa Teste",
+                codigoConvite = "SV-1000",
+                criadaPorUid = TestProfile.ADMIN.uid,
+                semanaAtual = "2026-W46",
+            )
+            val members = listOf(
+                Member(uid = TestProfile.ADMIN.uid, nome = TestProfile.ADMIN.nome, papel = HouseRole.ADMIN.name),
+                Member(uid = TestProfile.MEMBER.uid, nome = TestProfile.MEMBER.nome, papel = HouseRole.MEMBER.name),
+            )
+            Result.success(
+                TestProfileSession(
+                    user = User(
+                        uid = profile.uid,
+                        nome = profile.nome,
+                        email = profile.email,
+                        currentHouseId = house.id,
+                    ),
+                    house = house,
+                    members = members,
+                ),
+            )
+        }
+        val state = SuaVezStateHolder(testProfileGateway = gateway)
+
+        state.signInAs(TestProfile.ADMIN)
+        assertEquals(AppDestination.Main, state.destination)
+        assertEquals("Casa Teste", state.currentHouse?.nome)
+        assertTrue(state.isAdmin)
+        assertEquals(2, state.members.size)
     }
 
     @Test
@@ -63,9 +143,9 @@ class SuaVezStateHolderTest {
     }
 
     @Test
-    fun togglingTaskMovesCompletedToEndAndRecalculatesQuota() {
+    fun togglingTaskMovesCompletedToEndAndRecalculatesQuota() = runBlocking {
         val state = SuaVezStateHolder()
-        state.signInWithGoogle()
+        state.signInAs(TestProfile.ADMIN)
 
         assertEquals(3, state.myDonePoints)
         assertEquals(13, state.myTotalPoints)
@@ -89,9 +169,9 @@ class SuaVezStateHolderTest {
     }
 
     @Test
-    fun claimingOpenTaskAndDistributingPendingTasksRespectsPermissionsAndPreferences() {
+    fun claimingOpenTaskAndDistributingPendingTasksRespectsPermissionsAndPreferences() = runBlocking {
         val state = SuaVezStateHolder()
-        state.signInWithGoogle()
+        state.signInAs(TestProfile.ADMIN)
 
         val initialOpenCount = state.openAssignments.size
         val openTask = state.openAssignments.first()
@@ -107,9 +187,9 @@ class SuaVezStateHolderTest {
     }
 
     @Test
-    fun nonAdminCannotModifyFixedTasksOrDistribute() {
+    fun nonAdminCannotModifyFixedTasksOrDistribute() = runBlocking {
         val state = SuaVezStateHolder()
-        state.signInWithEmail("bruno@suavez.app")
+        state.signInAs(TestProfile.MEMBER)
 
         assertFalse(state.isAdmin)
         val initialFixedCount = state.fixedTasks.size
@@ -122,9 +202,9 @@ class SuaVezStateHolderTest {
     }
 
     @Test
-    fun preferenceAndBalanceRulesMatchSpec() {
+    fun preferenceAndBalanceRulesMatchSpec() = runBlocking {
         val state = SuaVezStateHolder()
-        state.signInWithGoogle()
+        state.signInAs(TestProfile.ADMIN)
 
         val firstFixed = state.fixedTasks.first()
         state.setPreference(firstFixed.id, PreferenceLevel.GOSTO)
@@ -139,9 +219,9 @@ class SuaVezStateHolderTest {
     }
 
     @Test
-    fun adminCanCreateRecurringTaskOptionallyOpeningInCurrentWeek() {
+    fun adminCanCreateRecurringTaskOptionallyOpeningInCurrentWeek() = runBlocking {
         val state = SuaVezStateHolder()
-        state.signInWithGoogle()
+        state.signInAs(TestProfile.ADMIN)
 
         val initialFixedCount = state.fixedTasks.size
         val initialOpenCount = state.openAssignments.size
@@ -176,9 +256,9 @@ class SuaVezStateHolderTest {
     }
 
     @Test
-    fun adminCanTransferAndLeaveOrDestroyHouse() {
+    fun adminCanTransferAndLeaveOrDestroyHouse() = runBlocking {
         val state = SuaVezStateHolder()
-        state.signInWithGoogle()
+        state.signInAs(TestProfile.ADMIN)
 
         val bruno = state.members.first { it.role == HouseRole.MEMBER }
         state.transferAdminAndLeave(bruno.uid)
