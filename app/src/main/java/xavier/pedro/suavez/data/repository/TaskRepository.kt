@@ -92,6 +92,7 @@ class TaskRepository(
         descricao: String = "",
         semanaAtual: String = DateCycleUtils.currentIsoWeekKey(),
         createInitialAssignmentInCurrentWeek: Boolean = true,
+        initialDeadline: TaskDeadline? = null,
     ): Result<Task> = runCatching {
         val cleanTitle = title.trim()
         require(cleanTitle.isNotEmpty()) { "O título da tarefa recorrente não pode ser vazio." }
@@ -120,7 +121,7 @@ class TaskRepository(
 
             if (createInitialAssignmentInCurrentWeek) {
                 val assignmentDoc = assignmentsCol(houseId).document()
-                val defaultDeadline = when (frequency) {
+                val defaultDeadline = initialDeadline?.name ?: when (frequency) {
                     TaskFrequency.DIARIA -> TaskDeadline.HOJE.name
                     else -> TaskDeadline.DOMINGO.name
                 }
@@ -206,12 +207,28 @@ class TaskRepository(
         houseId: String,
         recurringTaskId: String,
         hardDelete: Boolean = true,
+        semanaAtual: String = DateCycleUtils.currentIsoWeekKey(),
     ): Result<Unit> = runCatching {
         val docRef = tasksCol(houseId).document(recurringTaskId)
+        val batch = firestore.batch()
         if (hardDelete) {
-            docRef.delete().await()
+            batch.delete(docRef)
         } else {
-            docRef.update("ativa", false).await()
+            batch.update(docRef, "ativa", false)
         }
+
+        val currentWeekAssignments = assignmentsCol(houseId)
+            .whereEqualTo("semana", semanaAtual)
+            .whereEqualTo("taskId", recurringTaskId)
+            .get()
+            .await()
+
+        currentWeekAssignments.documents.forEach { doc ->
+            if (doc.getString("status") != AssignmentStatus.CONCLUIDA.name) {
+                batch.delete(doc.reference)
+            }
+        }
+
+        batch.commit().await()
     }
 }
