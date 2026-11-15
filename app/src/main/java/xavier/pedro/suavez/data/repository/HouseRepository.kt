@@ -1,5 +1,6 @@
 package xavier.pedro.suavez.data.repository
 
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -74,8 +75,7 @@ class HouseRepository(
         val userSnap = userDocRef.get().await()
 
         if (userSnap.exists()) {
-            val existingUser = userSnap.toObject(User::class.java)?.copy(uid = userSnap.id)
-                ?: User(uid = profile.uid, nome = profile.nome, email = profile.email)
+            val existingUser = userSnap.toUserSafe(profile)
             val houseId = existingUser.currentHouseId?.takeIf { it.isNotBlank() }
                 ?: return@runCatching TestProfileSession(
                     user = existingUser,
@@ -173,10 +173,18 @@ class HouseRepository(
     )
 
     private fun TestProfile.toUserMap(houseId: String): Map<String, Any?> = mapOf(
-        "uid" to uid,
         "nome" to nome,
         "email" to email,
         "currentHouseId" to houseId,
+    )
+
+    private fun DocumentSnapshot.toUserSafe(fallback: TestProfile): User = User(
+        uid = id,
+        nome = getString("nome") ?: fallback.nome,
+        email = getString("email") ?: fallback.email,
+        fotoUrl = getString("fotoUrl"),
+        currentHouseId = getString("currentHouseId"),
+        criadoEm = getTimestamp("criadoEm"),
     )
 
     suspend fun createHouse(
