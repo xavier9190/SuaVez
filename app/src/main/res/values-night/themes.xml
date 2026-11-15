@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.SuaVez" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/verde_casa</item>
+        <item name="colorPrimaryVariant">@color/verde_fundo</item>
+        <item name="colorOnPrimary">@color/parede</item>
+        <item name="colorSecondary">@color/ambar_vez</item>
+        <item name="colorOnSecondary">@color/tinta</item>
+        <item name="android:windowBackground">@color/parede</item>
+        <item name="android:statusBarColor">@color/parede</item>
+        <item name="android:navigationBarColor">@color/superficie</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

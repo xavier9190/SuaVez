@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sua Vez — Referência de telas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Tokens — Identidade Visual v1 + formas do hi-fi */
+:root{
+  --teal:#0E8C7F; --teal-deep:#0A6B61; --mist:#E3F1EE;
+  --sol:#F5A524; --sol-soft:#FEF1D8; --sol-ink:#8A5A00;
+  --ink:#13222E; --muted:#5A6B77; --faint:#8A979D; --line:#DAE5E3; --bg:#F4F8F7; --surface:#fff;
+  --coral:#E2574C; --coral-ink:#C23D32; --slate:#8796A5; --leaf:#2E9E5B;
+  --display:"Outfit",system-ui,sans-serif; --body:"Figtree",system-ui,sans-serif;
+  --r-card:24px; --r-ctl:16px; --r-pill:999px;
+  --shadow:0 1px 2px rgba(19,34,46,.05),0 4px 14px rgba(19,34,46,.04);
+  --av1:#D9F2EC; --av2:#DDEBFA; --av3:#FDEFD3; --av4:#F2E3F7;
+}
+*{box-sizing:border-box;margin:0}
+body{font-family:var(--body);background:#E3EAE8;color:var(--ink);padding:32px 16px 64px}
+h1.doc{font:700 24px var(--display);text-align:center}
+p.doc{color:var(--muted);text-align:center;margin:6px auto 32px;font-size:14px;max-width:640px}
+.grid{display:flex;flex-wrap:wrap;gap:32px;justify-content:center;align-items:flex-start}
+figcaption{font-size:13px;font-weight:600;color:var(--muted);margin-bottom:8px;text-align:center}
+
+.phone{width:390px;min-height:844px;background:var(--bg);border:1px solid var(--line);border-radius:32px;overflow:hidden;display:flex;flex-direction:column;position:relative}
+.content{flex:1;padding:8px 24px 28px;display:flex;flex-direction:column;gap:24px}
+.stack{display:flex;flex-direction:column;gap:12px}
+.spacer{flex:1}
+
+/* App bar */
+.appbar{height:56px;padding:0 24px;display:flex;align-items:center;gap:8px;flex:none;margin-top:6px}
+.lock{display:flex;align-items:center;gap:6px;font:600 21px/1 var(--display);letter-spacing:-.02em}
+.lock svg{width:28px;height:28px}
+.lock b{font-weight:600;color:var(--teal)}
+.appbar .house{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);font-weight:600}
+.appbar .house:before{content:"";width:4px;height:4px;border-radius:50%;background:var(--faint)}
+.appbar .avatar{margin-left:auto}
+.subbar{height:56px;padding:0 24px;display:flex;align-items:center;gap:12px;flex:none;margin-top:6px}
+.subbar h1{font:700 22px/28px var(--display);flex:1}
+.round{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;flex:none}
+.round.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.round.soft{background:var(--mist);border-color:transparent;color:var(--teal-deep)}
+
+/* Type */
+.page-title{font:700 28px/34px var(--display);letter-spacing:-.01em}
+.title{font:600 20px/26px var(--display)}
+.item-title{font:600 16px/22px var(--display)}
+.meta{font-size:13px;line-height:18px;color:var(--muted)}
+.body{font-size:15px;line-height:22px;color:var(--muted)}
+.overline{font-size:12px;line-height:16px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.label{font-size:14px;font-weight:500;line-height:20px}
+.code{font:700 26px/30px var(--display);letter-spacing:.1em}
+.pts{color:var(--teal);font-family:var(--display);font-weight:600;white-space:nowrap}
+
+/* Buttons (pílula) */
+.btn{height:48px;width:100%;border-radius:var(--r-pill);font:600 16px/20px var(--body);display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;border:1px solid transparent;background:none;color:inherit}
+.btn:active{filter:brightness(.93)}
+.btn.sm{height:36px;width:auto;padding:0 16px;font-size:14px}
+.btn.primary{background:var(--teal);color:#fff}
+.btn.tonal{background:var(--mist);color:var(--teal-deep)}
+.btn.secondary{border:1.5px solid var(--teal);color:var(--teal)}
+.btn.neutral{background:var(--surface);border-color:var(--line);color:var(--ink)}
+.btn.destructive{border:1.5px solid var(--coral);color:var(--coral)}
+.btn.dashed{border:1.5px dashed #B9CFCB;color:var(--teal-deep);background:rgba(255,255,255,.6)}
+.btn.ghost{color:var(--muted)}
+.btn.pegar{width:84px;padding:0}
+
+.field{display:flex;flex-direction:column;gap:6px}
+.input{height:52px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--surface);padding:0 16px;font:400 16px var(--body);color:var(--ink);width:100%}
+.input::placeholder{color:var(--faint)}
+.input:focus{outline:none;border:1.5px solid var(--teal)}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:16px;box-shadow:var(--shadow)}
+.row{display:flex;align-items:center;gap:12px}
+.grow{flex:1;min-width:0}
+.between{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.section-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.section-h .sub{font-size:13px;color:var(--muted);margin-top:2px}
+.sep{border-top:1px solid var(--line);margin:16px -16px 0;padding:16px 16px 0}
+
+.chip{height:26px;padding:0 11px;border-radius:var(--r-pill);display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;white-space:nowrap}
+.chip.info{background:var(--mist);color:var(--teal-deep)}
+.chip.admin{background:var(--mist);color:var(--teal-deep);box-shadow:inset 0 0 0 1px rgba(14,140,127,.28)}
+.chip.vez{background:var(--sol-soft);color:var(--sol-ink)}
+.chip.ok{background:color-mix(in srgb,var(--leaf) 15%,#fff);color:var(--leaf)}
+.chip.eyebrow{background:var(--sol-soft);color:var(--sol-ink);letter-spacing:.04em}
+.chip svg{width:13px;height:13px}
+
+.avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:600 15px var(--display);color:var(--teal-deep);flex:none;position:relative}
+.avatar.sm{width:36px;height:36px;font-size:14px}
+.avatar.lg{width:56px;height:56px;font-size:20px}
+
+/* Esforço: Leve ≤3 · Média 4–6 · Pesada ≥7 */
+.ico{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;background:var(--mist);color:var(--teal)}
+.ico.pesada{background:color-mix(in srgb,var(--coral) 12%,#fff);color:var(--coral)}
+.ico.media{background:var(--sol-soft);color:#B97800}
+.ico svg{width:22px;height:22px}
+.eff{height:28px;padding:0 12px;border-radius:var(--r-pill);display:inline-flex;align-items:center;font:700 14px var(--display);white-space:nowrap}
+.eff.pesada{background:color-mix(in srgb,var(--coral) 12%,#fff);color:var(--coral-ink)}
+.eff.media{background:var(--sol-soft);color:var(--sol-ink)}
+.eff.leve{background:var(--mist);color:var(--teal-deep)}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--teal)}
+.dot.pesada{background:var(--coral)} .dot.media{background:var(--sol)}
+
+/* Progresso */
+.bar{height:10px;border-radius:var(--r-pill);background:var(--mist);overflow:hidden;display:flex}
+.bar>i{display:block;height:100%}
+.bar .teal{background:linear-gradient(90deg,#0A6B61,#0E8C7F)}
+.bar .amber{background:linear-gradient(90deg,#F5A524,#FBC66B)}
+.bar .amber-soft{background:color-mix(in srgb,var(--sol) 45%,#fff)}
+.bar.thick{height:12px}
+
+/* Cota */
+.cota .big{font:700 40px/1 var(--display);color:var(--teal);letter-spacing:-.02em}
+.cota .big small{font:500 16px var(--body);color:var(--muted);letter-spacing:0;margin-left:6px}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--muted);font-weight:500}
+.legend span:before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--teal)}
+.legend span.p:before{background:color-mix(in srgb,var(--sol) 65%,#fff)}
+
+/* Tarefa */
+.task{display:flex;align-items:center;gap:12px;padding:14px 14px 14px 16px}
+.task.vez{box-shadow:inset 5px 0 0 var(--sol),var(--shadow);background:linear-gradient(90deg,rgba(245,165,36,.11),#fff 45%)}
+.task .chip.vez{margin-bottom:4px;height:22px;padding:0 9px}
+.task.done{box-shadow:var(--shadow);background:#fff}
+.task.done .item-title{color:var(--faint);text-decoration:line-through;text-decoration-thickness:1.5px}
+.task.done .ico,.task.done .eff{opacity:.55}
+.task.done .chip.vez{display:none}
+.cb{width:28px;height:28px;border-radius:9px;border:2px solid #B4C4C1;background:#fff;color:#fff;display:flex;align-items:center;justify-content:center;flex:none;cursor:pointer;padding:0}
+.cb svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;opacity:0}
+.task.done .cb{background:var(--teal);border-color:var(--teal)}
+.task.done .cb svg{opacity:1}
+
+/* Placar */
+.rank{display:flex;align-items:center;gap:12px}
+.avwrap{position:relative;flex:none}
+.star{position:absolute;right:-4px;top:-4px;width:20px;height:20px;border-radius:50%;background:var(--sol);border:2px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff}
+.star svg{width:10px;height:10px;fill:currentColor}
+.pill-pts{font:700 15px var(--display);color:var(--teal);white-space:nowrap}
+.rank.me .pill-pts{color:var(--sol-ink)}
+.rank.me .avatar{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--sol)}
+.scores{display:flex;flex-direction:column;gap:18px;margin-top:18px}
+.rank .grow{display:flex;flex-direction:column;gap:7px}
+
+/* Ritmo */
+.ring{position:relative;width:60px;height:60px;flex:none}
+.ring svg.r{width:60px;height:60px;transform:rotate(-90deg)}
+.ring .in{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--teal)}
+.ring .in svg{width:22px;height:22px}
+.pct{font:700 28px/1 var(--display);color:var(--teal)}
+.faixa{display:flex;align-items:center;gap:14px;background:var(--bg);border-radius:20px;padding:12px 14px}
+.stackav{display:flex}
+.stackav .avatar{width:32px;height:32px;font-size:12px;border:2px solid #fff;margin-left:-8px}
+.stackav .avatar:first-child{margin-left:0}
+.mini{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.mini:first-of-type{border-top:0}
+.mini .ico{width:36px;height:36px}.mini .ico svg{width:18px;height:18px}
+
+/* Tab bar com pílula */
+.tabs{height:72px;flex:none;background:var(--surface);border-top:1px solid var(--line);display:flex;padding-bottom:4px}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:12px;font-weight:500;color:var(--faint)}
+.tab .pi{width:56px;height:30px;border-radius:15px;display:flex;align-items:center;justify-content:center}
+.tab svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tab.on{color:var(--teal-deep);font-weight:700}
+.tab.on .pi{background:var(--mist)}
+.tab.on svg{fill:rgba(14,140,127,.25);color:var(--teal)}
+
+.divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px}
+.divider:before,.divider:after{content:"";flex:1;height:1px;background:var(--line)}
+.logo{display:flex;align-items:center;justify-content:center;gap:10px;margin:64px 0 8px;font:600 36px/1 var(--display);letter-spacing:-.02em}
+.logo b{font-weight:600;color:var(--teal)}
+.logo svg{width:48px;height:48px}
+.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ic.sm{width:14px;height:14px}
+.kebab{width:36px;height:36px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:20px}
+.iconbtn{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--muted);background:none;border:0;cursor:pointer;flex:none}
+.iconbtn:hover{background:var(--bg)}
+.note{display:flex;align-items:center;gap:10px;background:var(--mist);color:var(--teal-deep);border-radius:var(--r-ctl);padding:12px 14px;font-size:13px;font-weight:500}
+
+/* Segmentado só em Preferências */
+.seg{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-pill);padding:4px;height:48px}
+.seg button{flex:1;border:0;background:none;border-radius:var(--r-pill);font:500 14px var(--body);color:var(--muted);cursor:pointer}
+.seg button.on{font-weight:600}
+.seg button.on.odeio{background:color-mix(in srgb,var(--coral) 14%,#fff);color:var(--coral-ink);box-shadow:inset 0 0 0 1.5px var(--coral)}
+.seg button.on.tanto{background:color-mix(in srgb,var(--slate) 22%,#fff);color:var(--muted);box-shadow:inset 0 0 0 1.5px var(--slate)}
+.seg button.on.gosto{background:color-mix(in srgb,var(--leaf) 14%,#fff);color:var(--leaf);box-shadow:inset 0 0 0 1.5px var(--leaf)}
+.pref-group{display:flex;flex-direction:column;gap:8px}
+
+/* Sheet + opções */
+.dim{position:absolute;inset:0;background:rgba(19,34,46,.42)}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:32px 32px 0 0;padding:12px 24px 28px;display:flex;flex-direction:column;gap:18px}
+.grab{width:40px;height:4px;border-radius:2px;background:var(--line);align-self:center}
+.opts{display:flex;gap:8px;flex-wrap:wrap}
+.opt{height:40px;padding:0 16px;border-radius:var(--r-pill);border:1.5px solid var(--line);background:#fff;font:600 14px var(--body);color:var(--ink);cursor:pointer}
+.opt.on{border-color:var(--teal);background:var(--mist);color:var(--teal-deep)}
+.opt.e-media.on{border-color:var(--sol);background:var(--sol-soft);color:var(--sol-ink)}
+.opt.e-pesada.on{border-color:var(--coral);background:color-mix(in srgb,var(--coral) 12%,#fff);color:var(--coral-ink)}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-tasks" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 13l2 2 4-4"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M5 4v6M5 14v6M12 4v2M12 10v10M19 4v10M19 18v2M3 10h4M10 6h4M17 14h4"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-6 8-6s8 2 8 6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l5 5 9-10"/></symbol>
+  <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></symbol>
+  <symbol id="i-cart" viewBox="0 0 24 24"><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/><path d="M2 3h3l2.5 12h11L21 7H6"/></symbol>
+  <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-fridge" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M6 11h12M9 7v2M9 14v3"/></symbol>
+  <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 19c0-9 5-14 15-14 0 10-5 15-14 15zM5 19c3-5 6-8 10-10"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z"/></symbol>
+  <symbol id="mark" viewBox="0 0 100 100">
+    <g fill="none" stroke-width="14" stroke-linecap="round" transform="rotate(-90 50 50)">
+      <circle cx="50" cy="50" r="40" stroke="#0E8C7F" stroke-dasharray="56 195.3"/>
+      <circle cx="50" cy="50" r="40" stroke="#0E8C7F" stroke-dasharray="56 195.3" transform="rotate(120 50 50)"/>
+      <circle cx="50" cy="50" r="40" stroke="#F5A524" stroke-dasharray="56 195.3" transform="rotate(240 50 50)"/>
+    </g>
+    <mask id="m1" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="#fff"/><path d="M42 57 L48 63 L59 51" fill="none" stroke="#000" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></mask>
+    <path d="M50 30 L71 49 H66 V69 H34 V49 H29 Z" fill="#0E8C7F" stroke="#0E8C7F" stroke-width="3" stroke-linejoin="round" mask="url(#m1)"/>
+  </symbol>
+</svg>
+
+<h1 class="doc">Sua Vez — Referência das telas (v3)</h1>
+<p class="doc">Telas longas aparecem completas. Interativo: marcar tarefas (reordena e recalcula a cota), Pegar, preferências, chips dos formulários e Copiar.</p>
+
+<div class="grid">
+
+<!-- 1 Login -->
+<figure><figcaption>1 · Login</figcaption>
+<div class="phone">
+  <div class="content">
+    <div class="logo"><svg viewBox="0 0 100 100"><use href="#mark"/></svg><span>sua <b>vez</b></span></div>
+    <div class="stack" style="gap:16px">
+      <div class="field"><label class="label">E-mail</label><input class="input" placeholder="voce@email.com"></div>
+      <div class="field"><label class="label">Senha</label><input class="input" type="password" placeholder="Senha"></div>
+      <button class="btn primary">Entrar</button>
+    </div>
+    <div class="divider">ou</div>
+    <div class="stack">
+      <button class="btn neutral"><svg class="ic"><circle cx="12" cy="12" r="9"/><path d="M12 12h6"/></svg>Entrar com o Google</button>
+      <button class="btn neutral">Criar conta</button>
+    </div>
+  </div>
+</div></figure>
+
+<!-- 2 Sua casa -->
+<figure><figcaption>2 · Sua casa (sem casa)</figcaption>
+<div class="phone">
+  <div class="appbar"><div class="lock"><svg viewBox="0 0 100 100"><use href="#mark"/></svg><span>sua <b>vez</b></span></div><div class="avatar sm" style="background:var(--av1)">AN</div></div>
+  <div class="content">
+    <div><div class="page-title">Sua casa</div><p class="body" style="margin-top:6px">Crie a casa ou entre com um código de convite.</p></div>
+    <button class="btn primary">Criar casa</button>
+    <div class="divider">ou</div>
+    <div class="field"><label class="label">Código de convite</label><input class="input" placeholder="Digite o código"></div>
+    <button class="btn secondary">Entrar na casa</button>
+  </div>
+  <nav class="tabs">
+    <div class="tab"><span class="pi"><svg><use href="#i-tasks"/></svg></span>Tarefas</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-sliders"/></svg></span>Preferências</div>
+    <div class="tab on"><span class="pi"><svg><use href="#i-home"/></svg></span>Casa</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-user"/></svg></span>Perfil</div>
+  </nav>
+</div></figure>
+
+<!-- 3a Tarefas -->
+<figure><figcaption>3a · Tarefas (tela inicial)</figcaption>
+<div class="phone">
+  <div class="appbar"><div class="lock"><svg viewBox="0 0 100 100"><use href="#mark"/></svg><span>sua <b>vez</b></span></div><span class="house">Casa dos amigos</span><div class="avatar sm" style="background:var(--av1)">AN</div></div>
+  <div class="content">
+
+    <div><div class="page-title">Bom dia, Ana</div><div class="meta" style="margin-top:2px">Semana 43 · 3 moradores</div></div>
+
+    <div class="card cota stack" style="gap:14px">
+      <div class="between"><span class="overline">Sua cota da semana</span><span class="chip vez" id="pendChip2">10 pts pendentes</span></div>
+      <div class="big"><span id="doneTxt">3</span><small>de <span id="totTxt">13</span> pts feitos</small></div>
+      <div class="bar thick"><i class="teal" id="barDone" style="width:23%"></i><i class="amber-soft" id="barPend" style="width:77%"></i></div>
+      <div class="legend"><span>Feitos</span><span class="p">Pendentes</span></div>
+    </div>
+
+    <div class="stack">
+      <div class="section-h"><div class="title">Suas tarefas da semana</div><span class="chip info" id="pendChip">2 pendentes</span></div>
+      <div class="stack" id="mylist">
+        <div class="card task vez" data-pts="8">
+          <button class="cb" role="checkbox" aria-checked="false" aria-label="Concluir Lavar o banheiro"><svg><use href="#i-check"/></svg></button>
+          <div class="ico pesada"><svg class="ic"><use href="#i-drop"/></svg></div>
+          <div class="grow"><span class="chip vez">Sua vez</span><div class="item-title">Lavar o banheiro</div><div class="meta">Limpeza · até sábado</div></div>
+          <span class="eff pesada">8 pts</span>
+        </div>
+        <div class="card task" data-pts="2">
+          <button class="cb" role="checkbox" aria-checked="false" aria-label="Concluir Tirar o lixo"><svg><use href="#i-check"/></svg></button>
+          <div class="ico"><svg class="ic"><use href="#i-trash"/></svg></div>
+          <div class="grow"><div class="item-title">Tirar o lixo</div><div class="meta">Limpeza · diária</div></div>
+          <span class="eff leve">2 pts</span>
+        </div>
+        <div class="card task done" data-pts="3">
+          <button class="cb" role="checkbox" aria-checked="true" aria-label="Concluir Comprar sabão"><svg><use href="#i-check"/></svg></button>
+          <div class="ico"><svg class="ic"><use href="#i-cart"/></svg></div>
+          <div class="grow"><div class="item-title">Comprar sabão</div><div class="meta">Compras · feita ontem</div></div>
+          <span class="eff leve">3 pts</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card stack" style="gap:16px">
+      <div class="between">
+        <div><div class="title">Ritmo da casa</div><div class="meta">Semana coletiva · Casa dos amigos</div></div>
+        <span class="pct">78%</span>
+      </div>
+      <div class="faixa">
+        <div class="ring">
+          <svg class="r" viewBox="0 0 60 60"><circle cx="30" cy="30" r="24" fill="none" stroke="#FBD9A0" stroke-width="7"/><circle cx="30" cy="30" r="24" fill="none" stroke="#0E8C7F" stroke-width="7" stroke-linecap="round" stroke-dasharray="117.6 150.8"/></svg>
+          <div class="in"><svg class="ic"><use href="#i-home"/></svg></div>
+        </div>
+        <div class="grow"><div class="item-title" style="font-size:15px">14 de 18 tarefas feitas</div><div class="meta">Faltam 4 para fechar 100% até domingo.</div></div>
+      </div>
+      <div class="between"><div class="stackav"><div class="avatar" style="background:var(--av1)">AN</div><div class="avatar" style="background:var(--av2)">BR</div><div class="avatar" style="background:var(--av3)">CA</div></div><span class="meta">Todo mundo no ritmo 👏</span></div>
+
+      <div class="sep">
+        <div class="section-h" style="margin-bottom:6px"><div><div class="item-title">Tarefas abertas</div><div class="meta">Ninguém pegou ainda</div></div><span class="chip vez">3</span></div>
+        <div class="mini"><div class="ico media"><svg class="ic"><use href="#i-fridge"/></svg></div><div class="grow"><div class="item-title" style="font-size:15px">Limpar a geladeira</div></div><span class="eff media">5 pts</span></div>
+        <div class="mini"><div class="ico"><svg class="ic"><use href="#i-receipt"/></svg></div><div class="grow"><div class="item-title" style="font-size:15px">Pagar conta de luz</div></div><span class="eff leve">3 pts</span></div>
+        <div class="meta" style="margin:2px 0 14px">+1 tarefa</div>
+        <button class="btn primary">Ver tarefas abertas<svg class="ic"><use href="#i-arrow"/></svg></button>
+      </div>
+    </div>
+
+  </div>
+  <nav class="tabs">
+    <div class="tab on"><span class="pi"><svg><use href="#i-tasks"/></svg></span>Tarefas</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-sliders"/></svg></span>Preferências</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-home"/></svg></span>Casa</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-user"/></svg></span>Perfil</div>
+  </nav>
+</div></figure>
+
+<!-- 3b Tarefas abertas -->
+<figure><figcaption>3b · Tarefas abertas (página própria)</figcaption>
+<div class="phone">
+  <div class="subbar"><button class="round" aria-label="Voltar"><svg class="ic"><use href="#i-back"/></svg></button><h1>Tarefas abertas</h1><button class="round primary" aria-label="Nova tarefa"><svg class="ic"><use href="#i-plus"/></svg></button></div>
+  <div class="content">
+    <p class="body">Tarefas avulsas desta semana. Quem pegar soma os pontos; o que sobrar entra no sorteio justo.</p>
+    <div class="stack">
+      <div class="card task"><div class="ico media"><svg class="ic"><use href="#i-fridge"/></svg></div><div class="grow"><div class="item-title">Limpar a geladeira</div><div class="meta">Limpeza · até domingo</div><span class="eff media" style="margin-top:6px;height:24px;font-size:13px">5 pts</span></div><button class="btn secondary sm pegar">Pegar</button></div>
+      <div class="card task"><div class="ico"><svg class="ic"><use href="#i-receipt"/></svg></div><div class="grow"><div class="item-title">Pagar conta de luz</div><div class="meta">Contas · até sexta</div><span class="eff leve" style="margin-top:6px;height:24px;font-size:13px">3 pts</span></div><button class="btn secondary sm pegar">Pegar</button></div>
+      <div class="card task"><div class="ico"><svg class="ic"><use href="#i-leaf"/></svg></div><div class="grow"><div class="item-title">Regar as plantas</div><div class="meta">Casa · sem prazo</div><span class="eff leve" style="margin-top:6px;height:24px;font-size:13px">1 pt</span></div><button class="btn secondary sm pegar">Pegar</button></div>
+      <button class="btn dashed"><svg class="ic"><use href="#i-plus"/></svg>Nova tarefa da semana</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="stack">
+      <p class="meta" style="text-align:center">Só o admin vê o botão abaixo.</p>
+      <button class="btn tonal">Distribuir pendentes</button>
+    </div>
+  </div>
+  <nav class="tabs">
+    <div class="tab on"><span class="pi"><svg><use href="#i-tasks"/></svg></span>Tarefas</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-sliders"/></svg></span>Preferências</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-home"/></svg></span>Casa</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-user"/></svg></span>Perfil</div>
+  </nav>
+</div></figure>
+
+<!-- 3c Nova tarefa da semana -->
+<figure><figcaption>3c · Nova tarefa da semana (sheet)</figcaption>
+<div class="phone" style="min-height:844px">
+  <div class="subbar"><button class="round"><svg class="ic"><use href="#i-back"/></svg></button><h1>Tarefas abertas</h1></div>
+  <div class="dim"></div>
+  <div class="sheet">
+    <div class="grab"></div>
+    <div class="title">Nova tarefa da semana</div>
+    <div class="field"><label class="label">Nome</label><input class="input" placeholder="Ex.: Limpar a geladeira"></div>
+    <div class="field"><label class="label">Categoria</label><div class="opts" data-opts><button class="opt on">Limpeza</button><button class="opt">Compras</button><button class="opt">Contas</button><button class="opt">Outras</button></div></div>
+    <div class="field"><label class="label">Esforço</label><div class="opts" data-opts><button class="opt on">Leve · 2 pts</button><button class="opt e-media">Média · 5 pts</button><button class="opt e-pesada">Pesada · 8 pts</button></div></div>
+    <div class="field"><label class="label">Prazo</label><div class="opts" data-opts><button class="opt">Hoje</button><button class="opt on">Sábado</button><button class="opt">Domingo</button><button class="opt">Sem prazo</button></div></div>
+    <div class="stack" style="margin-top:4px"><button class="btn primary">Adicionar tarefa</button><button class="btn ghost">Cancelar</button></div>
+  </div>
+</div></figure>
+
+<!-- 4 Preferências -->
+<figure><figcaption>4 · Preferências</figcaption>
+<div class="phone">
+  <div class="appbar"><div class="lock"><svg viewBox="0 0 100 100"><use href="#mark"/></svg><span>sua <b>vez</b></span></div><span class="house">Casa dos amigos</span><div class="avatar sm" style="background:var(--av1)">AN</div></div>
+  <div class="content">
+    <div><div class="page-title">Preferências</div><p class="body" style="margin-top:6px">Defina como você se sente sobre cada tarefa doméstica para um sorteio justo.</p></div>
+    <div class="pref-group"><div class="item-title">Lavar banheiro</div><div class="seg" data-pref><button data-k="odeio" class="on odeio">Odeio</button><button data-k="tanto">Tanto faz</button><button data-k="gosto">Gosto</button></div></div>
+    <div class="pref-group"><div class="item-title">Comprar sabão</div><div class="seg" data-pref><button data-k="odeio">Odeio</button><button data-k="tanto" class="on tanto">Tanto faz</button><button data-k="gosto">Gosto</button></div></div>
+    <div class="pref-group"><div class="item-title">Tirar o lixo</div><div class="seg" data-pref><button data-k="odeio">Odeio</button><button data-k="tanto">Tanto faz</button><button data-k="gosto" class="on gosto">Gosto</button></div></div>
+    <div class="pref-group"><div class="item-title">Pagar conta de luz</div><div class="seg" data-pref><button data-k="odeio">Odeio</button><button data-k="tanto" class="on tanto">Tanto faz</button><button data-k="gosto">Gosto</button></div></div>
+  </div>
+  <nav class="tabs">
+    <div class="tab"><span class="pi"><svg><use href="#i-tasks"/></svg></span>Tarefas</div>
+    <div class="tab on"><span class="pi"><svg><use href="#i-sliders"/></svg></span>Preferências</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-home"/></svg></span>Casa</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-user"/></svg></span>Perfil</div>
+  </nav>
+</div></figure>
+
+<!-- 5a Casa -->
+<figure><figcaption>5a · Casa (admin)</figcaption>
+<div class="phone">
+  <div class="appbar"><div class="lock"><svg viewBox="0 0 100 100"><use href="#mark"/></svg><span>sua <b>vez</b></span></div><span class="house">Casa dos amigos</span><div class="avatar sm" style="background:var(--av1)">AN</div></div>
+  <div class="content">
+
+    <div class="between" style="align-items:flex-start">
+      <div><span class="chip eyebrow">CONFIGURAÇÕES DA CASA</span><div class="page-title" style="margin-top:8px">Casa dos amigos</div><div class="meta" style="margin-top:2px">#APTO-402 · 3 moradores</div></div>
+      <div class="ico" style="width:52px;height:52px"><svg class="ic"><use href="#i-home"/></svg></div>
+    </div>
+
+    <div class="card stack" style="gap:14px">
+      <div class="between"><div><div class="overline">Código de convite</div><div class="code" style="margin-top:4px">SV-7824</div></div><span class="chip ok">Ativo</span></div>
+      <div class="row" style="gap:10px"><button class="btn tonal" id="copy" style="flex:1"><svg class="ic"><use href="#i-copy"/></svg><span>Copiar código</span></button><button class="btn primary" style="flex:1"><svg class="ic"><use href="#i-share"/></svg>Compartilhar</button></div>
+    </div>
+
+    <div class="card">
+      <div class="between"><div class="title">Pontuação da semana</div><span class="chip info">Ciclo atual</span></div>
+      <div class="scores">
+        <div class="rank me"><div class="avwrap"><div class="avatar" style="background:var(--av1)">AN</div><span class="star"><svg><use href="#i-star"/></svg></span></div><div class="grow"><div class="between"><span><b>Ana</b> <span class="meta">· você</span></span><span class="pill-pts">34 pts</span></div><div class="bar thick"><i class="amber" style="width:85%"></i></div></div></div>
+        <div class="rank"><div class="avwrap"><div class="avatar" style="background:var(--av2)">BR</div></div><div class="grow"><div class="between"><span>Bruno</span><span class="pill-pts">28 pts</span></div><div class="bar thick"><i class="teal" style="width:70%"></i></div></div></div>
+        <div class="rank"><div class="avwrap"><div class="avatar" style="background:var(--av3)">CA</div></div><div class="grow"><div class="between"><span>Carla</span><span class="pill-pts">21 pts</span></div><div class="bar thick"><i class="teal" style="width:52%"></i></div></div></div>
+      </div>
+      <div class="sep between"><span class="chip ok">Casa equilibrada</span><span class="meta">14 de 18 tarefas feitas</span></div>
+    </div>
+
+    <div class="stack">
+      <div class="section-h"><div class="title">Moradores</div><span class="chip info">3 integrantes</span></div>
+      <div class="card row"><div class="avatar" style="background:var(--av1)">AN</div><div class="grow"><div class="row" style="gap:8px"><span class="item-title">Ana</span><span class="chip admin">Admin</span></div><div class="meta">1 aberta · 8 pts</div></div></div>
+      <div class="card row"><div class="avatar" style="background:var(--av2)">BR</div><div class="grow"><div class="row" style="gap:8px"><span class="item-title">Bruno</span><span class="chip vez">Próximo da vez</span></div><div class="meta">2 abertas · 5 pts</div></div><span class="kebab">⋮</span></div>
+      <div class="card row"><div class="avatar" style="background:var(--av3)">CA</div><div class="grow"><div class="item-title">Carla</div><div class="meta">0 abertas</div></div><span class="kebab">⋮</span></div>
+    </div>
+
+    <div class="stack">
+      <div class="section-h"><div><div class="title">Tarefas fixas da casa</div><div class="sub">Repetem toda semana · definem a cota de cada um</div></div><button class="round primary" aria-label="Nova tarefa fixa"><svg class="ic"><use href="#i-plus"/></svg></button></div>
+      <div class="note"><svg class="ic"><use href="#i-star"/></svg>Cota semanal por morador: <b>&nbsp;13 pts</b></div>
+      <div class="card row"><div class="ico pesada"><svg class="ic"><use href="#i-drop"/></svg></div><div class="grow"><div class="item-title">Lavar banheiro</div><div class="meta"><span class="dot pesada"></span>Pesada · Semanal</div></div><span class="eff pesada">8 pts</span><button class="iconbtn" aria-label="Editar Lavar banheiro"><svg class="ic"><use href="#i-pencil"/></svg></button></div>
+      <div class="card row"><div class="ico media"><svg class="ic"><use href="#i-cart"/></svg></div><div class="grow"><div class="item-title">Comprar sabão</div><div class="meta"><span class="dot media"></span>Média · Quinzenal</div></div><span class="eff media">5 pts</span><button class="iconbtn" aria-label="Editar Comprar sabão"><svg class="ic"><use href="#i-pencil"/></svg></button></div>
+      <div class="card row"><div class="ico"><svg class="ic"><use href="#i-receipt"/></svg></div><div class="grow"><div class="item-title">Pagar conta de luz</div><div class="meta"><span class="dot"></span>Leve · Mensal</div></div><span class="eff leve">3 pts</span><button class="iconbtn" aria-label="Editar Pagar conta de luz"><svg class="ic"><use href="#i-pencil"/></svg></button></div>
+      <div class="card row"><div class="ico"><svg class="ic"><use href="#i-trash"/></svg></div><div class="grow"><div class="item-title">Tirar o lixo</div><div class="meta"><span class="dot"></span>Leve · Diária</div></div><span class="eff leve">2 pts</span><button class="iconbtn" aria-label="Editar Tirar o lixo"><svg class="ic"><use href="#i-pencil"/></svg></button></div>
+      <button class="btn dashed"><svg class="ic"><use href="#i-plus"/></svg>Nova tarefa fixa</button>
+    </div>
+  </div>
+  <nav class="tabs">
+    <div class="tab"><span class="pi"><svg><use href="#i-tasks"/></svg></span>Tarefas</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-sliders"/></svg></span>Preferências</div>
+    <div class="tab on"><span class="pi"><svg><use href="#i-home"/></svg></span>Casa</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-user"/></svg></span>Perfil</div>
+  </nav>
+</div></figure>
+
+<!-- 5b Editar tarefa fixa -->
+<figure><figcaption>5b · Editar tarefa fixa (sheet)</figcaption>
+<div class="phone">
+  <div class="appbar"><div class="lock"><svg viewBox="0 0 100 100"><use href="#mark"/></svg><span>sua <b>vez</b></span></div></div>
+  <div class="dim"></div>
+  <div class="sheet">
+    <div class="grab"></div>
+    <div class="between"><div class="title">Editar tarefa fixa</div><span class="chip info">Repete toda semana</span></div>
+    <div class="field"><label class="label">Nome</label><input class="input" value="Lavar banheiro"></div>
+    <div class="field"><label class="label">Categoria</label><div class="opts" data-opts><button class="opt on">Limpeza</button><button class="opt">Compras</button><button class="opt">Contas</button><button class="opt">Outras</button></div></div>
+    <div class="field"><label class="label">Esforço</label><div class="opts" data-opts><button class="opt">Leve · 2 pts</button><button class="opt e-media">Média · 5 pts</button><button class="opt e-pesada on">Pesada · 8 pts</button></div></div>
+    <div class="field"><label class="label">Repetição</label><div class="opts" data-opts><button class="opt">Diária</button><button class="opt on">Semanal</button><button class="opt">Quinzenal</button><button class="opt">Mensal</button></div></div>
+    <div class="stack" style="margin-top:4px"><button class="btn primary">Salvar alterações</button><button class="btn destructive">Excluir tarefa fixa</button></div>
+  </div>
+</div></figure>
+
+<!-- 6a Perfil admin -->
+<figure><figcaption>6a · Perfil (admin)</figcaption>
+<div class="phone">
+  <div class="appbar"><div class="lock"><svg viewBox="0 0 100 100"><use href="#mark"/></svg><span>sua <b>vez</b></span></div><span class="house">Casa dos amigos</span></div>
+  <div class="content">
+    <div class="page-title">Perfil</div>
+    <div class="card row"><div class="avatar lg" style="background:var(--av1)">AN</div><div class="grow"><div class="overline">Nome</div><div class="item-title" style="font-size:18px">Ana</div></div><span class="chip admin">Admin</span></div>
+    <div class="card"><div class="overline">Nome da casa</div><div class="item-title" style="margin-top:2px">Casa dos amigos</div></div>
+    <div class="spacer"></div>
+    <div class="stack">
+      <button class="btn secondary">Renomear casa</button>
+      <button class="btn neutral">Sair da casa</button>
+      <button class="btn destructive">Destruir casa</button>
+    </div>
+  </div>
+  <nav class="tabs">
+    <div class="tab"><span class="pi"><svg><use href="#i-tasks"/></svg></span>Tarefas</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-sliders"/></svg></span>Preferências</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-home"/></svg></span>Casa</div>
+    <div class="tab on"><span class="pi"><svg><use href="#i-user"/></svg></span>Perfil</div>
+  </nav>
+</div></figure>
+
+<!-- 6b Perfil morador -->
+<figure><figcaption>6b · Perfil (morador)</figcaption>
+<div class="phone">
+  <div class="appbar"><div class="lock"><svg viewBox="0 0 100 100"><use href="#mark"/></svg><span>sua <b>vez</b></span></div><span class="house">Casa dos amigos</span></div>
+  <div class="content">
+    <div class="page-title">Perfil</div>
+    <div class="card row"><div class="avatar lg" style="background:var(--av2)">BR</div><div class="grow"><div class="overline">Nome</div><div class="item-title" style="font-size:18px">Bruno</div></div></div>
+    <div class="card"><div class="overline">Nome da casa</div><div class="item-title" style="margin-top:2px">Casa dos amigos</div></div>
+    <div class="spacer"></div>
+    <button class="btn neutral">Sair da casa</button>
+  </div>
+  <nav class="tabs">
+    <div class="tab"><span class="pi"><svg><use href="#i-tasks"/></svg></span>Tarefas</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-sliders"/></svg></span>Preferências</div>
+    <div class="tab"><span class="pi"><svg><use href="#i-home"/></svg></span>Casa</div>
+    <div class="tab on"><span class="pi"><svg><use href="#i-user"/></svg></span>Perfil</div>
+  </nav>
+</div></figure>
+
+</div>
+
+<script>
+/* Tarefas: marcar/desmarcar reordena (concluídas descem) e recalcula a cota */
+const list=document.getElementById('mylist');
+function recalc(){
+  const t=[...list.querySelectorAll('.task')];
+  const tot=t.reduce((s,x)=>s+ +x.dataset.pts,0);
+  const done=t.filter(x=>x.classList.contains('done')).reduce((s,x)=>s+ +x.dataset.pts,0);
+  const pend=t.filter(x=>!x.classList.contains('done')).length;
+  document.getElementById('doneTxt').textContent=done;
+  document.getElementById('totTxt').textContent=tot;
+  document.getElementById('barDone').style.width=(done/tot*100)+'%';
+  document.getElementById('barPend').style.width=((tot-done)/tot*100)+'%';
+  document.getElementById('pendChip').textContent=pend+(pend===1?' pendente':' pendentes');
+  document.getElementById('pendChip2').textContent=(tot-done)+' pts pendentes';
+}
+list.querySelectorAll('.cb').forEach(cb=>cb.addEventListener('click',()=>{
+  const card=cb.closest('.task'); const on=!card.classList.contains('done');
+  card.classList.toggle('done',on); cb.setAttribute('aria-checked',on);
+  if(on){list.appendChild(card)}
+  else{const firstDone=list.querySelector('.task.done'); list.insertBefore(card,firstDone||null)}
+  recalc();
+}));
+document.querySelectorAll('.pegar').forEach(b=>b.addEventListener('click',()=>{b.textContent='Sua ✓';b.disabled=true;b.style.opacity='.6'}));
+document.querySelectorAll('[data-opts]').forEach(g=>g.querySelectorAll('.opt').forEach(o=>o.addEventListener('click',()=>{
+  g.querySelectorAll('.opt').forEach(x=>x.classList.remove('on'));o.classList.add('on');
+})));
+document.querySelectorAll('[data-pref] button').forEach(b=>b.addEventListener('click',()=>{
+  b.parentElement.querySelectorAll('button').forEach(x=>x.className=''); b.className='on '+b.dataset.k;
+}));
+const copy=document.getElementById('copy');
+copy.addEventListener('click',()=>{
+  try{navigator.clipboard.writeText('SV-7824')}catch(e){}
+  const s=copy.querySelector('span'); s.textContent='Copiado ✓'; setTimeout(()=>s.textContent='Copiar código',2000);
+});
+</script>
+</body>
+</html>
