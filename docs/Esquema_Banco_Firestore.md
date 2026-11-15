@@ -97,8 +97,9 @@ Catálogo base de tarefas recorrentes que se repetem a cada semana. Gerenciado e
 | `id` | `String` | ID único da tarefa no catálogo |
 | `titulo` | `String` | Título da tarefa (ex: "Lavar banheiro social") |
 | `descricao` | `String` | Instruções ou detalhes adicionais |
-| `peso` | `Int` | Pontuação da tarefa: 1 (Leve), 3 (Média) ou 5 (Pesada) |
+| `peso` | `Int` | Pontuação da tarefa: 2 (Leve), 5 (Média) ou 8 (Pesada) |
 | `pesoNivel` | `String` | Nível selecionado: `"LIGHT"`, `"MEDIUM"` ou `"HEAVY"` |
+| `frequencia` | `String` | Frequência de repetição: `"DIARIA"`, `"SEMANAL"`, `"QUINZENAL"` ou `"MENSAL"` |
 | `categoriaId` | `String` | ID da categoria associada |
 | `categoriaNome` | `String` | Nome da categoria denormalizado para leitura rápida |
 | `ativa` | `Boolean` | Se a tarefa está ativa para entrar na geração semanal |
@@ -117,7 +118,8 @@ Tarefas específicas de uma semana determinada, com dados desnormalizados para q
 | `taskId` | `String?` | ID da tarefa no catálogo base (nulo se for tarefa avulsa) |
 | `titulo` | `String` | Título da tarefa |
 | `descricao` | `String` | Detalhes adicionais |
-| `peso` | `Int` | Pontos atribuídos à tarefa (1, 3 ou 5) |
+| `peso` | `Int` | Pontos atribuídos à tarefa (2, 5 ou 8) |
+| `deadline` | `String?` | Prazo da tarefa na semana: `"HOJE"`, `"SABADO"`, `"DOMINGO"` ou `"SEM_PRAZO"` |
 | `categoriaId` | `String` | ID da categoria |
 | `categoriaNome` | `String` | Nome da categoria |
 | `status` | `String` | Estado: `"PENDENTE"`, `"ATRIBUIDA"` ou `"CONCLUIDA"` |
