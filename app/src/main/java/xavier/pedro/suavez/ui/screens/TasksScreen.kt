@@ -19,6 +19,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import xavier.pedro.suavez.ui.components.ActivityFormSheet
 import xavier.pedro.suavez.ui.components.EffortIconCircle
 import xavier.pedro.suavez.ui.components.EffortPill
 import xavier.pedro.suavez.ui.components.RitmoRing
@@ -38,9 +43,12 @@ import xavier.pedro.suavez.ui.components.SuaVezButtonVariant
 import xavier.pedro.suavez.ui.components.SuaVezCard
 import xavier.pedro.suavez.ui.components.SuaVezChip
 import xavier.pedro.suavez.ui.components.SuaVezChipVariant
+import xavier.pedro.suavez.ui.components.SuaVezIcon
 import xavier.pedro.suavez.ui.components.SuaVezIconType
 import xavier.pedro.suavez.ui.components.SuaVezMark
 import xavier.pedro.suavez.ui.components.SuaVezProgressBar
+import xavier.pedro.suavez.ui.components.SuaVezRoundButton
+import xavier.pedro.suavez.ui.components.SuaVezRoundButtonVariant
 import xavier.pedro.suavez.ui.components.SuaVezTaskCard
 import xavier.pedro.suavez.ui.components.toSuaVezIcon
 import xavier.pedro.suavez.ui.state.SuaVezStateHolder
@@ -76,6 +84,7 @@ fun TasksScreen(
     val houseTotal = state.houseTotalCount
     val housePct = state.houseCompletionPercent
     val houseRemaining = (houseTotal - houseDone).coerceAtLeast(0)
+    var showCreateActivitySheet by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -90,16 +99,31 @@ fun TasksScreen(
         verticalArrangement = Arrangement.spacedBy(SuaVezDimens.SectionGap),
     ) {
         // 1. Saudação
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = "Bom dia, ${firstNameOf(user.nome)}",
-                style = typo.pageTitle,
-                color = colors.ink,
-            )
-            Text(
-                text = "Semana ${house.semanaNumero} · ${state.members.size} moradores",
-                style = typo.meta,
-                color = colors.muted,
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = "Bom dia, ${firstNameOf(user.nome)}",
+                    style = typo.pageTitle,
+                    color = colors.ink,
+                )
+                Text(
+                    text = "Semana ${house.semanaNumero} · ${state.members.size} moradores",
+                    style = typo.meta,
+                    color = colors.muted,
+                )
+            }
+            SuaVezRoundButton(
+                icon = SuaVezIconType.PLUS,
+                contentDescription = "Criar atividade",
+                onClick = { showCreateActivitySheet = true },
+                variant = SuaVezRoundButtonVariant.Primary,
             )
         }
 
@@ -228,6 +252,19 @@ fun TasksScreen(
                     )
                 }
             }
+
+            SuaVezButton(
+                text = "Criar atividade",
+                onClick = { showCreateActivitySheet = true },
+                variant = SuaVezButtonVariant.Dashed,
+                leadingContent = {
+                    SuaVezIcon(
+                        type = SuaVezIconType.PLUS,
+                        tint = colors.tealDeep,
+                        size = 18.dp,
+                    )
+                },
+            )
         }
 
         // 4. Card Ritmo da casa + prévia de Tarefas abertas
@@ -409,6 +446,29 @@ fun TasksScreen(
                 }
             }
         }
+    }
+
+    if (showCreateActivitySheet) {
+        ActivityFormSheet(
+            isAdmin = state.isAdmin,
+            onDismiss = { showCreateActivitySheet = false },
+            onCreateWeeklyTask = { title, category, points, deadline ->
+                showCreateActivitySheet = false
+                state.addWeeklyTask(title, category, points, deadline)
+            },
+            onSaveRecurringTask = { title, category, points, frequency, openInCurrentWeek, deadline ->
+                showCreateActivitySheet = false
+                state.saveFixedTask(
+                    editingId = null,
+                    title = title,
+                    category = category,
+                    points = points,
+                    frequency = frequency,
+                    openInCurrentWeek = openInCurrentWeek,
+                    deadline = deadline,
+                )
+            },
+        )
     }
 }
 

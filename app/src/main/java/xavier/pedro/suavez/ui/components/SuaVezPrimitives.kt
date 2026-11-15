@@ -55,7 +55,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -451,6 +454,7 @@ fun SuaVezInput(
     modifier: Modifier = Modifier,
     isPassword: Boolean = false,
     error: String? = null,
+    required: Boolean = false,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     singleLine: Boolean = true,
@@ -474,7 +478,20 @@ fun SuaVezInput(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (label.isNotEmpty()) {
-            Text(text = label, style = typo.label, color = colors.ink)
+            if (required) {
+                Text(
+                    text = buildAnnotatedString {
+                        append(label)
+                        withStyle(SpanStyle(color = colors.coral)) {
+                            append(" *")
+                        }
+                    },
+                    style = typo.label,
+                    color = colors.ink,
+                )
+            } else {
+                Text(text = label, style = typo.label, color = colors.ink)
+            }
         }
         Box(
             modifier = Modifier
@@ -642,6 +659,7 @@ fun SuaVezOptionChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     tone: OptionChipTone = OptionChipTone.Default,
+    isError: Boolean = false,
 ) {
     val colors = SuaVezTheme.colors
     val typo = SuaVezTheme.typography
@@ -662,8 +680,9 @@ fun SuaVezOptionChip(
         OptionChipTone.EffortPesada -> colors.coralInk
     }
 
+    val unselectedBorder = if (isError) colors.coral else colors.line
     val bg by animateColorAsState(if (selected) selectedBg else colors.surface, label = "optBg")
-    val border by animateColorAsState(if (selected) selectedBorder else colors.line, label = "optBorder")
+    val border by animateColorAsState(if (selected) selectedBorder else unselectedBorder, label = "optBorder")
     val textColor by animateColorAsState(if (selected) selectedText else colors.ink, label = "optFg")
 
     val shape = RoundedCornerShape(SuaVezDimens.RadiusPill)
