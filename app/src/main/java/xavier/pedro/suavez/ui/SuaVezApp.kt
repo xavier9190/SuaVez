@@ -30,7 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import xavier.pedro.suavez.data.repository.HouseRepository
+import xavier.pedro.suavez.data.repository.FirestoreSuaVezDataSource
 import xavier.pedro.suavez.ui.components.SuaVezAppBar
 import xavier.pedro.suavez.ui.components.SuaVezTabBar
 import xavier.pedro.suavez.ui.screens.HouseScreen
@@ -45,32 +45,31 @@ import xavier.pedro.suavez.ui.state.MainTab
 import xavier.pedro.suavez.ui.state.SnackbarFeedback
 import xavier.pedro.suavez.ui.state.SuaVezStateHolder
 import xavier.pedro.suavez.ui.state.TestProfile
-import xavier.pedro.suavez.ui.state.TestProfileGateway
 import xavier.pedro.suavez.ui.theme.SuaVezDimens
 import xavier.pedro.suavez.ui.theme.SuaVezTheme
 
 @Composable
 fun SuaVezApp(
-    state: SuaVezStateHolder = remember {
-        SuaVezStateHolder(
-            testProfileGateway = TestProfileGateway { profile ->
-                HouseRepository().loadOrBootstrapTestProfile(profile)
-            },
-        )
-    },
+    state: SuaVezStateHolder? = null,
 ) {
     val colors = SuaVezTheme.colors
     val scope = rememberCoroutineScope()
-
-    BackHandler(enabled = state.destination != AppDestination.Login) {
-        state.navigateBack()
+    val holder = state ?: remember(scope) {
+        SuaVezStateHolder(
+            dataSource = FirestoreSuaVezDataSource(),
+            scope = scope,
+        )
     }
 
-    val activeSnackbar = state.snackbar
+    BackHandler(enabled = holder.destination != AppDestination.Login) {
+        holder.navigateBack()
+    }
+
+    val activeSnackbar = holder.snackbar
     LaunchedEffect(activeSnackbar?.id) {
         if (activeSnackbar != null) {
             delay(3000)
-            state.clearSnackbar()
+            holder.clearSnackbar()
         }
     }
 
@@ -79,76 +78,76 @@ fun SuaVezApp(
             .fillMaxSize()
             .background(colors.bg),
     ) {
-        when (state.destination) {
+        when (holder.destination) {
             AppDestination.Login -> {
                 LoginScreen(
-                    isLoading = state.isAuthenticating,
-                    onSignInAsAdmin = { scope.launch { state.signInAs(TestProfile.ADMIN) } },
-                    onSignInAsMember = { scope.launch { state.signInAs(TestProfile.MEMBER) } },
+                    isLoading = holder.isAuthenticating,
+                    onSignInAsAdmin = { scope.launch { holder.signInAs(TestProfile.ADMIN) } },
+                    onSignInAsMember = { scope.launch { holder.signInAs(TestProfile.MEMBER) } },
                 )
             }
 
             AppDestination.NoHouse -> {
-                val user = state.currentUser
+                val user = holder.currentUser
                 Column(modifier = Modifier.fillMaxSize()) {
                     SuaVezAppBar(
                         houseName = null,
-                        userName = if (state.activeTab != MainTab.PROFILE) user?.nome else null,
-                        userId = if (state.activeTab != MainTab.PROFILE) user?.uid else null,
-                        onAvatarClick = { state.selectTab(MainTab.PROFILE) },
+                        userName = if (holder.activeTab != MainTab.PROFILE) user?.nome else null,
+                        userId = if (holder.activeTab != MainTab.PROFILE) user?.uid else null,
+                        onAvatarClick = { holder.selectTab(MainTab.PROFILE) },
                     )
                     Box(modifier = Modifier.weight(1f)) {
-                        when (state.activeTab) {
-                            MainTab.PROFILE -> ProfileScreen(state = state)
+                        when (holder.activeTab) {
+                            MainTab.PROFILE -> ProfileScreen(state = holder)
                             else -> NoHouseScreen(
-                                onCreateHouse = { name -> state.createHouse(name) },
-                                onJoinHouse = { code -> state.joinHouseByCode(code) },
+                                onCreateHouse = { name -> holder.createHouse(name) },
+                                onJoinHouse = { code -> holder.joinHouseByCode(code) },
                             )
                         }
                         SnackbarBannerOverlay(
                             feedback = activeSnackbar,
-                            onDismiss = { state.clearSnackbar() },
+                            onDismiss = { holder.clearSnackbar() },
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
                     }
                     SuaVezTabBar(
-                        activeTab = state.activeTab,
+                        activeTab = holder.activeTab,
                         hasHouse = false,
-                        onSelectTab = { state.selectTab(it) },
+                        onSelectTab = { holder.selectTab(it) },
                     )
                 }
             }
 
             AppDestination.Main -> {
-                val user = state.currentUser
-                val house = state.currentHouse
+                val user = holder.currentUser
+                val house = holder.currentHouse
                 Column(modifier = Modifier.fillMaxSize()) {
                     SuaVezAppBar(
                         houseName = house?.nome,
-                        userName = if (state.activeTab != MainTab.PROFILE) user?.nome else null,
-                        userId = if (state.activeTab != MainTab.PROFILE) user?.uid else null,
-                        onAvatarClick = { state.selectTab(MainTab.PROFILE) },
+                        userName = if (holder.activeTab != MainTab.PROFILE) user?.nome else null,
+                        userId = if (holder.activeTab != MainTab.PROFILE) user?.uid else null,
+                        onAvatarClick = { holder.selectTab(MainTab.PROFILE) },
                     )
                     Box(modifier = Modifier.weight(1f)) {
-                        when (state.activeTab) {
+                        when (holder.activeTab) {
                             MainTab.TASKS -> TasksScreen(
-                                state = state,
-                                onOpenTasksClick = { state.openOpenTasks() },
+                                state = holder,
+                                onOpenTasksClick = { holder.openOpenTasks() },
                             )
-                            MainTab.PREFERENCES -> PreferencesScreen(state = state)
-                            MainTab.HOUSE -> HouseScreen(state = state)
-                            MainTab.PROFILE -> ProfileScreen(state = state)
+                            MainTab.PREFERENCES -> PreferencesScreen(state = holder)
+                            MainTab.HOUSE -> HouseScreen(state = holder)
+                            MainTab.PROFILE -> ProfileScreen(state = holder)
                         }
                         SnackbarBannerOverlay(
                             feedback = activeSnackbar,
-                            onDismiss = { state.clearSnackbar() },
+                            onDismiss = { holder.clearSnackbar() },
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
                     }
                     SuaVezTabBar(
-                        activeTab = state.activeTab,
+                        activeTab = holder.activeTab,
                         hasHouse = true,
-                        onSelectTab = { state.selectTab(it) },
+                        onSelectTab = { holder.selectTab(it) },
                     )
                 }
             }
@@ -157,28 +156,28 @@ fun SuaVezApp(
                 Column(modifier = Modifier.fillMaxSize()) {
                     Box(modifier = Modifier.weight(1f)) {
                         OpenTasksScreen(
-                            state = state,
-                            onBack = { state.navigateBack() },
+                            state = holder,
+                            onBack = { holder.navigateBack() },
                         )
                         SnackbarBannerOverlay(
                             feedback = activeSnackbar,
-                            onDismiss = { state.clearSnackbar() },
+                            onDismiss = { holder.clearSnackbar() },
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
                     }
                     SuaVezTabBar(
                         activeTab = MainTab.TASKS,
                         hasHouse = true,
-                        onSelectTab = { state.selectTab(it) },
+                        onSelectTab = { holder.selectTab(it) },
                     )
                 }
             }
         }
 
-        if (state.destination == AppDestination.Login) {
+        if (holder.destination == AppDestination.Login) {
             SnackbarBannerOverlay(
                 feedback = activeSnackbar,
-                onDismiss = { state.clearSnackbar() },
+                onDismiss = { holder.clearSnackbar() },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 24.dp),

@@ -4,15 +4,26 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.launch
+import xavier.pedro.suavez.data.model.Assignment
 import xavier.pedro.suavez.data.model.House
 import xavier.pedro.suavez.data.model.HouseRole
 import xavier.pedro.suavez.data.model.Member
 import xavier.pedro.suavez.data.model.PreferenceLevel
 import xavier.pedro.suavez.data.model.User
+import xavier.pedro.suavez.data.repository.DateCycleUtils
+import xavier.pedro.suavez.data.repository.SuaVezDataSource
+import xavier.pedro.suavez.data.repository.toFirestoreUser
+import xavier.pedro.suavez.data.repository.toUiAssignment
 import xavier.pedro.suavez.data.repository.toUiHouse
 import xavier.pedro.suavez.data.repository.toUiMember
+import xavier.pedro.suavez.data.repository.toUiRecurringTask
 import xavier.pedro.suavez.data.repository.toUiUser
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -45,10 +56,6 @@ data class TestProfileSession(
     val members: List<Member>,
 )
 
-fun interface TestProfileGateway {
-    suspend fun loadOrBootstrap(profile: TestProfile): Result<TestProfileSession>
-}
-
 data class SnackbarFeedback(
     val id: Long = System.nanoTime(),
     val message: String,
@@ -58,7 +65,8 @@ data class SnackbarFeedback(
 
 @Stable
 class SuaVezStateHolder(
-    private val testProfileGateway: TestProfileGateway? = null,
+    private val dataSource: SuaVezDataSource,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
 
     var destination by mutableStateOf<AppDestination>(AppDestination.Login)
@@ -88,8 +96,13 @@ class SuaVezStateHolder(
     var snackbar by mutableStateOf<SnackbarFeedback?>(null)
         private set
 
+    private var rawAssignments: List<Assignment> = emptyList()
+    private var currentWeekKey: String = DateCycleUtils.currentIsoWeekKey()
     private var lastToggledAssignmentId: String? = null
-    private var nextIdCounter = 100
+    private val claimedInSessionIds = mutableSetOf<String>()
+
+    private var houseObservationJob: Job? = null
+    private var weekAssignmentsJob: Job? = null
 
     val currentMember: UiMember?
         get() = currentUser?.let { user -> members.firstOrNull { it.uid == user.uid } }
@@ -143,11 +156,8 @@ class SuaVezStateHolder(
             return ((houseDoneCount.toFloat() / houseTotalCount.toFloat()) * 100f).roundToInt()
         }
 
-    fun memberWeeklyPoints(uid: String): Int {
-        val baseScore = members.firstOrNull { it.uid == uid }?.monthlyPoints ?: 0
-        val completedThisWeek = assignments.filter { it.assigneeUid == uid && it.isDone }.sumOf { it.pontos }
-        return baseScore + completedThisWeek
-    }
+    fun memberWeeklyPoints(uid: String): Int =
+        members.firstOrNull { it.uid == uid }?.monthlyPoints ?: 0
 
     fun memberPendingCount(uid: String): Int =
         assignments.count { it.assigneeUid == uid && !it.isDone }
@@ -156,9 +166,8 @@ class SuaVezStateHolder(
         assignments.filter { it.assigneeUid == uid && !it.isDone }.sumOf { it.pontos }
 
     fun nextInTurnUid(): String? {
-        val nonAdminsOrAll = members
-        if (nonAdminsOrAll.isEmpty()) return null
-        return nonAdminsOrAll.minByOrNull { memberWeeklyPoints(it.uid) + memberPendingPoints(it.uid) }?.uid
+        if (members.isEmpty()) return null
+        return members.minByOrNull { memberWeeklyPoints(it.uid) + memberPendingPoints(it.uid) }?.uid
     }
 
     fun rankedMembers(): List<UiMember> =
@@ -187,6 +196,7 @@ class SuaVezStateHolder(
 
     fun openOpenTasks() {
         if (currentHouse == null) return
+        claimedInSessionIds.clear()
         assignments = assignments.map { it.copy(justClaimedInSession = false) }
         activeTab = MainTab.TASKS
         destination = AppDestination.OpenTasks
@@ -222,65 +232,43 @@ class SuaVezStateHolder(
     // --- Autenticação (perfis padrão de teste) ---
 
     suspend fun signInAs(profile: TestProfile) {
-        val gateway = testProfileGateway
-        if (gateway == null) {
-            loadDemoHouseForUser(
-                UiUser(
-                    uid = profile.uid,
-                    nome = profile.nome,
-                    email = profile.email,
-                ),
-            )
-            activeTab = MainTab.TASKS
-            destination = AppDestination.Main
-            return
-        }
-
         isAuthenticating = true
         try {
-            val result = gateway.loadOrBootstrap(profile)
-            result.onSuccess { session ->
-                currentUser = session.user.toUiUser()
-                recurringTasks = emptyList()
-                assignments = emptyList()
-                val house = session.house
-                if (house == null) {
-                    currentHouse = null
-                    members = emptyList()
-                    activeTab = MainTab.HOUSE
-                    destination = AppDestination.NoHouse
-                } else {
-                    currentHouse = house.toUiHouse()
-                    members = session.members.map { it.toUiMember() }
-                    activeTab = MainTab.TASKS
-                    destination = AppDestination.Main
+            dataSource.loadOrBootstrapTestProfile(profile)
+                .onSuccess { session ->
+                    currentUser = session.user.toUiUser()
+                    recurringTasks = emptyList()
+                    assignments = emptyList()
+                    rawAssignments = emptyList()
+                    claimedInSessionIds.clear()
+                    val house = session.house
+                    if (house == null) {
+                        stopObservingHouse()
+                        currentHouse = null
+                        members = emptyList()
+                        activeTab = MainTab.HOUSE
+                        destination = AppDestination.NoHouse
+                    } else {
+                        enterHouseSession(house, session.members)
+                    }
                 }
-            }.onFailure { error ->
-                showMessage("Erro ao entrar: ${error.localizedMessage ?: "tente novamente"}")
-            }
+                .onFailure { error ->
+                    showError("Erro ao entrar", error)
+                }
         } finally {
             isAuthenticating = false
         }
     }
 
-    fun createAccount(name: String, email: String) {
-        val newUid = "u_${nextId()}"
-        currentUser = UiUser(uid = newUid, nome = name.trim(), email = email.trim())
-        currentHouse = null
-        members = emptyList()
-        recurringTasks = emptyList()
-        assignments = emptyList()
-        activeTab = MainTab.HOUSE
-        destination = AppDestination.NoHouse
-        showMessage("Conta criada! Crie ou entre em uma casa.")
-    }
-
     fun signOut() {
+        stopObservingHouse()
         currentUser = null
         currentHouse = null
         members = emptyList()
         recurringTasks = emptyList()
         assignments = emptyList()
+        rawAssignments = emptyList()
+        claimedInSessionIds.clear()
         activeTab = MainTab.TASKS
         destination = AppDestination.Login
     }
@@ -289,114 +277,170 @@ class SuaVezStateHolder(
 
     fun createHouse(houseName: String) {
         val user = currentUser ?: return
-        val codeSuffix = (1000..9999).random()
-        val house = UiHouse(
-            id = "house_${nextId()}",
-            nome = houseName.trim(),
-            codigoConvite = "SV-$codeSuffix",
-            semanaNumero = 43,
-        )
-        val initialRecurring = defaultRecurringTasksSeed()
-        currentHouse = house
-        members = listOf(
-            UiMember(
-                uid = user.uid,
-                nome = user.nome,
-                role = HouseRole.ADMIN,
-                monthlyPoints = 0,
-            ),
-        )
-        recurringTasks = initialRecurring
-        assignments = initialRecurring.take(3).mapIndexed { idx, task ->
-            UiAssignment(
-                id = "a_${nextId()}",
-                recurringTaskId = task.id,
-                titulo = task.titulo,
-                categoria = task.categoria,
-                pontos = task.pontos,
-                deadline = if (idx == 0) TaskDeadline.SABADO else TaskDeadline.DOMINGO,
-                assigneeUid = null,
-            )
+        scope.launch {
+            dataSource.createHouse(houseName, user.toFirestoreUser())
+                .onSuccess { house ->
+                    enterHouseSession(house, emptyList())
+                    showMessage("Casa \"${house.nome}\" criada!")
+                }
+                .onFailure { showError("Erro ao criar casa", it) }
         }
-        activeTab = MainTab.TASKS
-        destination = AppDestination.Main
-        showMessage("Casa \"${house.nome}\" criada!")
     }
 
     fun joinHouseByCode(code: String) {
         val user = currentUser ?: return
-        val normalized = code.trim().uppercase()
-        loadDemoHouseForUser(user, customCode = normalized.ifBlank { "SV-7824" })
-        if (members.none { it.uid == user.uid }) {
-            members = members + UiMember(
-                uid = user.uid,
-                nome = user.nome,
-                role = HouseRole.MEMBER,
-                monthlyPoints = 20,
-            )
+        scope.launch {
+            dataSource.joinHouseByCode(code, user.toFirestoreUser())
+                .onSuccess { house ->
+                    enterHouseSession(house, emptyList())
+                    showMessage("Você entrou na ${house.nome}!")
+                }
+                .onFailure { showError("Erro ao entrar na casa", it) }
         }
+    }
+
+    private suspend fun enterHouseSession(house: House, initialMembers: List<Member>) {
+        currentHouse = house.toUiHouse()
+        if (initialMembers.isNotEmpty()) {
+            members = initialMembers.map { it.toUiMember() }
+        }
+        val initialWeek = house.semanaAtual.ifBlank { DateCycleUtils.currentIsoWeekKey() }
+        currentWeekKey = initialWeek
         activeTab = MainTab.TASKS
         destination = AppDestination.Main
-        showMessage("Você entrou na ${currentHouse?.nome}!")
+
+        // Sincroniza virada de semana (rollover + catálogo) antes de observar a semana atual
+        dataSource.ensureCurrentWeekAndRollover(house.id)
+            .onSuccess { plan ->
+                if (plan != null) {
+                    currentWeekKey = plan.newWeekKey
+                }
+            }
+            .onFailure { showError("Erro ao atualizar ciclo semanal", it) }
+
+        startObservingHouse(house.id, currentWeekKey)
+    }
+
+    private fun startObservingHouse(houseId: String, initialWeekKey: String) {
+        stopObservingHouse()
+        currentWeekKey = initialWeekKey
+
+        houseObservationJob = scope.launch {
+            launch {
+                dataSource.observeHouse(houseId)
+                    .catch { showError("Erro ao sincronizar casa", it) }
+                    .collect { house ->
+                        if (house == null) {
+                            if (currentHouse != null) {
+                                clearHouseForCurrentUser("A casa foi encerrada")
+                            }
+                            return@collect
+                        }
+                        currentHouse = house.toUiHouse()
+                        val weekKey = house.semanaAtual.ifBlank { DateCycleUtils.currentIsoWeekKey() }
+                        if (weekKey != currentWeekKey || weekAssignmentsJob == null) {
+                            currentWeekKey = weekKey
+                            restartWeekAssignmentsObserver(houseId, weekKey)
+                        }
+                    }
+            }
+            launch {
+                dataSource.observeMembers(houseId)
+                    .catch { showError("Erro ao sincronizar moradores", it) }
+                    .collect { remoteMembers ->
+                        members = remoteMembers.map { it.toUiMember() }
+                    }
+            }
+            launch {
+                dataSource.observeTasks(houseId)
+                    .catch { showError("Erro ao sincronizar tarefas recorrentes", it) }
+                    .collect { tasks ->
+                        recurringTasks = tasks.map { it.toUiRecurringTask() }
+                            .sortedBy { it.titulo.lowercase() }
+                    }
+            }
+            restartWeekAssignmentsObserver(houseId, initialWeekKey)
+        }
+    }
+
+    private fun restartWeekAssignmentsObserver(houseId: String, weekKey: String) {
+        weekAssignmentsJob?.cancel()
+        weekAssignmentsJob = scope.launch {
+            dataSource.observeWeekAssignments(houseId, weekKey)
+                .catch { showError("Erro ao sincronizar tarefas da semana", it) }
+                .collect { list ->
+                    rawAssignments = list
+                    assignments = list.map { item ->
+                        item.toUiAssignment(justClaimedInSession = item.id in claimedInSessionIds)
+                    }
+                }
+        }
+    }
+
+    private fun stopObservingHouse() {
+        weekAssignmentsJob?.cancel()
+        weekAssignmentsJob = null
+        houseObservationJob?.cancel()
+        houseObservationJob = null
     }
 
     // --- Tarefas ---
 
     fun toggleTaskDone(assignmentId: String) {
-        val target = assignments.firstOrNull { it.id == assignmentId } ?: return
-        val newDone = !target.isDone
-        assignments = assignments.map { item ->
-            if (item.id == assignmentId) {
-                item.copy(
-                    isDone = newDone,
-                    subtitleOverride = if (newDone) "feita agora" else null,
-                )
-            } else {
-                item
-            }
-        }
-        lastToggledAssignmentId = assignmentId
-        if (newDone) {
-            showMessage(
-                message = "Concluída",
-                actionLabel = "Desfazer",
-                onAction = { undoLastToggle() },
-            )
-        } else {
-            showMessage("Tarefa reaberta")
+        val houseId = currentHouse?.id ?: return
+        val target = rawAssignments.firstOrNull { it.id == assignmentId } ?: return
+        val newDone = !target.isConcluida()
+        scope.launch {
+            dataSource.setTaskCompleted(houseId, target, newDone)
+                .onSuccess {
+                    lastToggledAssignmentId = assignmentId
+                    if (newDone) {
+                        showMessage(
+                            message = "Concluída",
+                            actionLabel = "Desfazer",
+                            onAction = { undoLastToggle() },
+                        )
+                    } else {
+                        showMessage("Tarefa reaberta")
+                    }
+                }
+                .onFailure { showError("Erro ao atualizar tarefa", it) }
         }
     }
 
     private fun undoLastToggle() {
+        val houseId = currentHouse?.id ?: return
         val id = lastToggledAssignmentId ?: return
-        val target = assignments.firstOrNull { it.id == id } ?: return
-        assignments = assignments.map { item ->
-            if (item.id == id) {
-                item.copy(isDone = !target.isDone, subtitleOverride = null)
-            } else {
-                item
-            }
-        }
+        val target = rawAssignments.firstOrNull { it.id == id } ?: return
         lastToggledAssignmentId = null
+        scope.launch {
+            dataSource.setTaskCompleted(houseId, target, !target.isConcluida())
+                .onFailure { showError("Erro ao desfazer", it) }
+        }
     }
 
     fun claimOpenTask(assignmentId: String) {
-        val uid = currentUser?.uid ?: return
+        val houseId = currentHouse?.id ?: return
+        val user = currentUser ?: return
         val task = assignments.firstOrNull { it.id == assignmentId } ?: return
-        assignments = assignments.map { item ->
-            if (item.id == assignmentId) {
-                item.copy(assigneeUid = uid, justClaimedInSession = true)
-            } else {
-                item
-            }
+        claimedInSessionIds.add(assignmentId)
+        scope.launch {
+            dataSource.claimOpenTask(houseId, assignmentId, user.uid, user.nome)
+                .onSuccess {
+                    val projectedSum = myAssignments.sumOf { it.pontos } +
+                        if (myAssignments.any { it.id == assignmentId }) 0 else task.pontos
+                    val msg = if (projectedSum >= weeklyQuotaPerMember) {
+                        "\"${task.titulo}\" adicionada · Você atingiu sua cota!"
+                    } else {
+                        "\"${task.titulo}\" adicionada às suas tarefas"
+                    }
+                    showMessage(msg)
+                }
+                .onFailure {
+                    claimedInSessionIds.remove(assignmentId)
+                    showError("Erro ao pegar tarefa", it)
+                }
         }
-        val reachedQuota = myAssignments.sumOf { it.pontos } >= weeklyQuotaPerMember
-        val msg = if (reachedQuota) {
-            "\"${task.titulo}\" adicionada · Você atingiu sua cota!"
-        } else {
-            "\"${task.titulo}\" adicionada às suas tarefas"
-        }
-        showMessage(msg)
     }
 
     fun addWeeklyTask(
@@ -405,85 +449,53 @@ class SuaVezStateHolder(
         points: Int,
         deadline: TaskDeadline,
     ) {
-        val newTask = UiAssignment(
-            id = "a_${nextId()}",
-            recurringTaskId = null,
-            titulo = title.trim(),
-            categoria = category,
-            pontos = points,
-            deadline = deadline,
-            assigneeUid = null,
-        )
-        assignments = listOf(newTask) + assignments
-        showMessage("Tarefa \"${newTask.titulo}\" adicionada")
+        val houseId = currentHouse?.id ?: return
+        val uid = currentUser?.uid ?: return
+        scope.launch {
+            dataSource.addWeeklyTask(
+                houseId = houseId,
+                title = title,
+                category = category,
+                points = points,
+                deadline = deadline,
+                createdByUid = uid,
+                semana = currentWeekKey,
+            ).onSuccess { created ->
+                showMessage("Tarefa \"${created.titulo}\" adicionada")
+            }.onFailure { showError("Erro ao adicionar tarefa", it) }
+        }
     }
 
     fun distributePendingTasks() {
         if (!isAdmin) return
-        val open = openAssignments.sortedByDescending { it.pontos }
-        if (open.isEmpty() || members.isEmpty()) {
+        val houseId = currentHouse?.id ?: return
+        if (openAssignments.isEmpty() || members.isEmpty()) {
             showMessage("Não há tarefas abertas para distribuir")
             return
         }
-
-        val quota = weeklyQuotaPerMember.toDouble()
-        val toleranceLimit = quota * 1.10
-        val currentLoad = members.associate { m ->
-            m.uid to assignments.filter { it.assigneeUid == m.uid }.sumOf { it.pontos }
-        }.toMutableMap()
-
-        val updatedMap = mutableMapOf<String, String>()
-
-        for (task in open) {
-            val refTaskId = task.recurringTaskId
-            fun prefOf(m: UiMember): PreferenceLevel =
-                if (refTaskId != null) m.preferences[refTaskId] ?: PreferenceLevel.TANTO_FAZ
-                else PreferenceLevel.TANTO_FAZ
-
-            var candidates = members.filter { m ->
-                prefOf(m) != PreferenceLevel.ODEIO &&
-                    ((currentLoad[m.uid] ?: 0) + task.pontos) <= toleranceLimit
-            }
-            if (candidates.isEmpty()) {
-                candidates = members.filter { m -> prefOf(m) != PreferenceLevel.ODEIO }
-            }
-            if (candidates.isEmpty()) {
-                candidates = members
-            }
-
-            val chosen = candidates.sortedWith(
-                compareByDescending<UiMember> { m -> quota - (currentLoad[m.uid] ?: 0) }
-                    .thenByDescending { m -> if (prefOf(m) == PreferenceLevel.GOSTO) 1 else 0 }
-                    .thenBy { m -> memberWeeklyPoints(m.uid) }
-            ).first()
-
-            updatedMap[task.id] = chosen.uid
-            currentLoad[chosen.uid] = (currentLoad[chosen.uid] ?: 0) + task.pontos
+        scope.launch {
+            dataSource.distributePendingTasks(houseId, currentWeekKey)
+                .onSuccess { decisions ->
+                    if (decisions.isEmpty()) {
+                        showMessage("Não há tarefas abertas para distribuir")
+                    } else {
+                        showMessage("${decisions.size} tarefa(s) distribuída(s) de forma justa!")
+                    }
+                }
+                .onFailure { showError("Erro ao distribuir tarefas", it) }
         }
-
-        assignments = assignments.map { item ->
-            val assignedTo = updatedMap[item.id]
-            if (assignedTo != null) {
-                item.copy(assigneeUid = assignedTo, justClaimedInSession = false)
-            } else {
-                item
-            }
-        }
-        showMessage("${updatedMap.size} tarefa(s) distribuída(s) de forma justa!")
     }
 
     // --- Preferências ---
 
     fun setPreference(recurringTaskId: String, level: PreferenceLevel) {
+        val houseId = currentHouse?.id ?: return
         val uid = currentUser?.uid ?: return
-        members = members.map { member ->
-            if (member.uid == uid) {
-                member.copy(preferences = member.preferences + (recurringTaskId to level))
-            } else {
-                member
-            }
+        scope.launch {
+            dataSource.updatePreference(houseId, uid, recurringTaskId, level)
+                .onSuccess { showMessage("Preferência salva") }
+                .onFailure { showError("Erro ao salvar preferência", it) }
         }
-        showMessage("Preferência salva")
     }
 
     fun getMyPreference(recurringTaskId: String): PreferenceLevel {
@@ -502,116 +514,116 @@ class SuaVezStateHolder(
         deadline: TaskDeadline? = null,
     ) {
         if (!isAdmin) return
+        val houseId = currentHouse?.id ?: return
+        val uid = currentUser?.uid ?: return
         val cleanTitle = title.trim()
-        if (editingId == null) {
-            val newTask = UiRecurringTask(
-                id = "f_${nextId()}",
-                titulo = cleanTitle,
-                categoria = category,
-                pontos = points,
-                frequencia = frequency,
-            )
-            recurringTasks = recurringTasks + newTask
-            if (openInCurrentWeek) {
-                val newAssignment = UiAssignment(
-                    id = "a_${nextId()}",
-                    recurringTaskId = newTask.id,
-                    titulo = cleanTitle,
-                    categoria = category,
-                    pontos = points,
-                    deadline = deadline ?: TaskDeadline.DOMINGO,
-                    assigneeUid = null,
-                )
-                assignments = listOf(newAssignment) + assignments
-                showMessage("Atividade recorrente \"$cleanTitle\" criada e aberta na semana")
-            } else {
-                showMessage("Atividade recorrente \"$cleanTitle\" criada")
-            }
-        } else {
-            recurringTasks = recurringTasks.map { task ->
-                if (task.id == editingId) {
-                    task.copy(
-                        titulo = cleanTitle,
-                        categoria = category,
-                        pontos = points,
-                        frequencia = frequency,
-                        iconHint = defaultIconFor(category, cleanTitle),
-                    )
-                } else {
-                    task
+        scope.launch {
+            dataSource.saveRecurringTask(
+                houseId = houseId,
+                editingId = editingId,
+                title = cleanTitle,
+                category = category,
+                points = points,
+                frequency = frequency,
+                createdByUid = uid,
+                semanaAtual = currentWeekKey,
+                createInitialAssignmentInCurrentWeek = editingId == null && openInCurrentWeek,
+                initialDeadline = deadline,
+            ).onSuccess {
+                when {
+                    editingId != null -> showMessage("Alterações salvas")
+                    openInCurrentWeek -> showMessage("Atividade recorrente \"$cleanTitle\" criada e aberta na semana")
+                    else -> showMessage("Atividade recorrente \"$cleanTitle\" criada")
                 }
-            }
-            showMessage("Alterações salvas")
+            }.onFailure { showError("Erro ao salvar atividade recorrente", it) }
         }
     }
 
     fun deleteRecurringTask(recurringTaskId: String) {
         if (!isAdmin) return
-        recurringTasks = recurringTasks.filterNot { it.id == recurringTaskId }
-        showMessage("Tarefa recorrente excluída")
+        val houseId = currentHouse?.id ?: return
+        scope.launch {
+            dataSource.deleteRecurringTask(houseId, recurringTaskId, currentWeekKey)
+                .onSuccess { showMessage("Tarefa recorrente excluída") }
+                .onFailure { showError("Erro ao excluir tarefa recorrente", it) }
+        }
     }
 
     fun promoteToAdmin(memberUid: String) {
         if (!isAdmin) return
+        val houseId = currentHouse?.id ?: return
+        val currentAdminUid = currentUser?.uid ?: return
         val target = members.firstOrNull { it.uid == memberUid } ?: return
-        members = members.map { m ->
-            when (m.uid) {
-                memberUid -> m.copy(role = HouseRole.ADMIN)
-                currentUser?.uid -> m.copy(role = HouseRole.MEMBER)
-                else -> m
-            }
+        scope.launch {
+            dataSource.promoteToAdmin(houseId, currentAdminUid, memberUid)
+                .onSuccess { showMessage("${target.nome} agora é Admin da casa") }
+                .onFailure { showError("Erro ao transferir administração", it) }
         }
-        showMessage("${target.nome} agora é Admin da casa")
     }
 
     fun removeMember(memberUid: String) {
         if (!isAdmin || memberUid == currentUser?.uid) return
+        val houseId = currentHouse?.id ?: return
         val target = members.firstOrNull { it.uid == memberUid } ?: return
-        members = members.filterNot { it.uid == memberUid }
-        assignments = assignments.map { item ->
-            if (item.assigneeUid == memberUid && !item.isDone) {
-                item.copy(assigneeUid = null)
-            } else {
-                item
-            }
+        scope.launch {
+            dataSource.removeMember(houseId, memberUid)
+                .onSuccess { showMessage("${target.nome} foi removido(a) da casa") }
+                .onFailure { showError("Erro ao remover morador", it) }
         }
-        showMessage("${target.nome} foi removido(a) da casa")
     }
 
     // --- Perfil / Configurações da Casa ---
 
     fun renameHouse(newName: String) {
         if (!isAdmin) return
+        val houseId = currentHouse?.id ?: return
         val clean = newName.trim()
         if (clean.isEmpty()) return
-        currentHouse = currentHouse?.copy(nome = clean)
-        showMessage("Casa renomeada para \"$clean\"")
+        scope.launch {
+            dataSource.renameHouse(houseId, clean)
+                .onSuccess { showMessage("Casa renomeada para \"$clean\"") }
+                .onFailure { showError("Erro ao renomear casa", it) }
+        }
     }
 
     fun transferAdminAndLeave(newAdminUid: String) {
+        val houseId = currentHouse?.id ?: return
         val uid = currentUser?.uid ?: return
-        members = members
-            .filterNot { it.uid == uid }
-            .map { if (it.uid == newAdminUid) it.copy(role = HouseRole.ADMIN) else it }
-        clearHouseForCurrentUser("Você saiu da casa")
+        scope.launch {
+            dataSource.transferAdminAndLeave(houseId, uid, newAdminUid)
+                .onSuccess { clearHouseForCurrentUser("Você saiu da casa") }
+                .onFailure { showError("Erro ao sair da casa", it) }
+        }
     }
 
     fun leaveHouseAsMember() {
+        val houseId = currentHouse?.id ?: return
         val uid = currentUser?.uid ?: return
-        members = members.filterNot { it.uid == uid }
-        clearHouseForCurrentUser("Você saiu da casa")
+        scope.launch {
+            dataSource.leaveHouseAsMember(houseId, uid)
+                .onSuccess { clearHouseForCurrentUser("Você saiu da casa") }
+                .onFailure { showError("Erro ao sair da casa", it) }
+        }
     }
 
     fun destroyHouse() {
         if (!isAdmin) return
-        clearHouseForCurrentUser("Casa excluída")
+        val houseId = currentHouse?.id ?: return
+        scope.launch {
+            dataSource.destroyHouse(houseId)
+                .onSuccess { clearHouseForCurrentUser("Casa excluída") }
+                .onFailure { showError("Erro ao excluir casa", it) }
+        }
     }
 
     private fun clearHouseForCurrentUser(feedback: String) {
+        stopObservingHouse()
         currentHouse = null
         members = emptyList()
         recurringTasks = emptyList()
         assignments = emptyList()
+        rawAssignments = emptyList()
+        claimedInSessionIds.clear()
         activeTab = MainTab.HOUSE
         destination = AppDestination.NoHouse
         showMessage(feedback)
@@ -625,6 +637,11 @@ class SuaVezStateHolder(
         snackbar = null
     }
 
+    private fun showError(prefix: String, error: Throwable) {
+        val detail = error.localizedMessage?.takeIf { it.isNotBlank() } ?: "tente novamente"
+        showMessage("$prefix: $detail")
+    }
+
     private fun showMessage(
         message: String,
         actionLabel: String? = null,
@@ -636,159 +653,4 @@ class SuaVezStateHolder(
             onAction = onAction,
         )
     }
-
-    private fun nextId(): Int {
-        nextIdCounter += 1
-        return nextIdCounter
-    }
-
-    private fun loadDemoHouseForUser(user: UiUser, customCode: String = "SV-7824") {
-        currentUser = user
-        currentHouse = UiHouse(
-            id = "house_demo",
-            nome = "Casa dos amigos",
-            codigoConvite = customCode,
-            semanaNumero = 43,
-        )
-
-        val f1 = UiRecurringTask("f_1", "Lavar banheiro", TaskCategory.LIMPEZA, 8, TaskFrequency.SEMANAL, TaskIconHint.DROP)
-        val f2 = UiRecurringTask("f_2", "Comprar sabão", TaskCategory.COMPRAS, 5, TaskFrequency.QUINZENAL, TaskIconHint.CART)
-        val f3 = UiRecurringTask("f_3", "Pagar conta de luz", TaskCategory.CONTAS, 3, TaskFrequency.MENSAL, TaskIconHint.RECEIPT)
-        val f4 = UiRecurringTask("f_4", "Tirar o lixo", TaskCategory.LIMPEZA, 2, TaskFrequency.DIARIA, TaskIconHint.TRASH)
-        val f5 = UiRecurringTask("f_5", "Limpar a geladeira", TaskCategory.LIMPEZA, 5, TaskFrequency.SEMANAL, TaskIconHint.FRIDGE)
-        val f6 = UiRecurringTask("f_6", "Organizar cozinha", TaskCategory.LIMPEZA, 8, TaskFrequency.SEMANAL, TaskIconHint.DROP)
-        val f7 = UiRecurringTask("f_7", "Passar pano na sala", TaskCategory.LIMPEZA, 5, TaskFrequency.SEMANAL, TaskIconHint.DROP)
-        val f8 = UiRecurringTask("f_8", "Regar as plantas", TaskCategory.OUTRAS, 3, TaskFrequency.SEMANAL, TaskIconHint.LEAF)
-        recurringTasks = listOf(f1, f2, f3, f4, f5, f6, f7, f8)
-
-        val anaPrefs = mapOf(
-            "f_1" to PreferenceLevel.ODEIO,
-            "f_2" to PreferenceLevel.TANTO_FAZ,
-            "f_3" to PreferenceLevel.TANTO_FAZ,
-            "f_4" to PreferenceLevel.GOSTO,
-            "f_5" to PreferenceLevel.TANTO_FAZ,
-            "f_6" to PreferenceLevel.ODEIO,
-            "f_7" to PreferenceLevel.TANTO_FAZ,
-            "f_8" to PreferenceLevel.GOSTO,
-        )
-
-        members = listOf(
-            UiMember(
-                uid = TestProfile.ADMIN.uid,
-                nome = if (user.uid == TestProfile.ADMIN.uid) user.nome else "Admin",
-                role = HouseRole.ADMIN,
-                monthlyPoints = 31, // + 3 concluídos na semana = 34 pts
-                preferences = anaPrefs,
-            ),
-            UiMember(
-                uid = TestProfile.MEMBER.uid,
-                nome = if (user.uid == TestProfile.MEMBER.uid) user.nome else "Membro",
-                role = HouseRole.MEMBER,
-                monthlyPoints = 18, // + 14 concluídos = 32 pts
-                preferences = mapOf("f_1" to PreferenceLevel.GOSTO),
-            ),
-            UiMember(
-                uid = "u_carla",
-                nome = if (user.uid == "u_carla") user.nome else "Carla",
-                role = HouseRole.MEMBER,
-                monthlyPoints = 18, // + 13 concluídos = 31 pts
-                preferences = mapOf("f_4" to PreferenceLevel.ODEIO),
-            ),
-        )
-
-        assignments = listOf(
-            // Admin (2 pendentes + 1 concluída)
-            UiAssignment(
-                id = "a_1",
-                recurringTaskId = "f_1",
-                titulo = "Lavar o banheiro",
-                categoria = TaskCategory.LIMPEZA,
-                pontos = 8,
-                deadline = TaskDeadline.SABADO,
-                assigneeUid = TestProfile.ADMIN.uid,
-                isDone = false,
-                iconHint = TaskIconHint.DROP,
-            ),
-            UiAssignment(
-                id = "a_2",
-                recurringTaskId = "f_4",
-                titulo = "Tirar o lixo",
-                categoria = TaskCategory.LIMPEZA,
-                pontos = 2,
-                deadline = TaskDeadline.HOJE,
-                subtitleOverride = "diária",
-                assigneeUid = TestProfile.ADMIN.uid,
-                isDone = false,
-                iconHint = TaskIconHint.TRASH,
-            ),
-            UiAssignment(
-                id = "a_3",
-                recurringTaskId = "f_2",
-                titulo = "Comprar sabão",
-                categoria = TaskCategory.COMPRAS,
-                pontos = 3,
-                deadline = TaskDeadline.HOJE,
-                subtitleOverride = "feita ontem",
-                assigneeUid = TestProfile.ADMIN.uid,
-                isDone = true,
-                iconHint = TaskIconHint.CART,
-            ),
-            // Tarefas abertas (3)
-            UiAssignment(
-                id = "a_open_1",
-                recurringTaskId = "f_5",
-                titulo = "Limpar a geladeira",
-                categoria = TaskCategory.LIMPEZA,
-                pontos = 5,
-                deadline = TaskDeadline.DOMINGO,
-                assigneeUid = null,
-                isDone = false,
-                iconHint = TaskIconHint.FRIDGE,
-            ),
-            UiAssignment(
-                id = "a_open_2",
-                recurringTaskId = "f_3",
-                titulo = "Pagar conta de luz",
-                categoria = TaskCategory.CONTAS,
-                pontos = 3,
-                deadline = TaskDeadline.HOJE,
-                subtitleOverride = "até sexta",
-                assigneeUid = null,
-                isDone = false,
-                iconHint = TaskIconHint.RECEIPT,
-            ),
-            UiAssignment(
-                id = "a_open_3",
-                recurringTaskId = "f_8",
-                titulo = "Regar as plantas",
-                categoria = TaskCategory.OUTRAS,
-                pontos = 1,
-                deadline = TaskDeadline.SEM_PRAZO,
-                subtitleOverride = "sem prazo",
-                assigneeUid = null,
-                isDone = false,
-                iconHint = TaskIconHint.LEAF,
-            ),
-            // Concluídas dos outros moradores para compor o ritmo da casa (13 de 18 = 72% -> 14 ao concluir mais 1)
-            UiAssignment("a_b1", "f_6", "Organizar cozinha", TaskCategory.LIMPEZA, 8, TaskDeadline.HOJE, "feita", TestProfile.MEMBER.uid, isDone = true, iconHint = TaskIconHint.DROP),
-            UiAssignment("a_b2", "f_4", "Tirar o lixo (seg)", TaskCategory.LIMPEZA, 2, TaskDeadline.HOJE, "feita", TestProfile.MEMBER.uid, isDone = true, iconHint = TaskIconHint.TRASH),
-            UiAssignment("a_b3", "f_4", "Tirar o lixo (ter)", TaskCategory.LIMPEZA, 2, TaskDeadline.HOJE, "feita", TestProfile.MEMBER.uid, isDone = true, iconHint = TaskIconHint.TRASH),
-            UiAssignment("a_b4", "f_8", "Regar jardim", TaskCategory.OUTRAS, 2, TaskDeadline.HOJE, "feita", TestProfile.MEMBER.uid, isDone = true, iconHint = TaskIconHint.LEAF),
-            UiAssignment("a_b5", "f_4", "Reciclar embalagens", TaskCategory.LIMPEZA, 2, TaskDeadline.HOJE, "feita", TestProfile.MEMBER.uid, isDone = true, iconHint = TaskIconHint.TRASH),
-            UiAssignment("a_b6", null, "Trocar filtro de água", TaskCategory.OUTRAS, 2, TaskDeadline.HOJE, "feita", TestProfile.MEMBER.uid, isDone = true, iconHint = TaskIconHint.DROP),
-            UiAssignment("a_c1", "f_7", "Passar pano na sala", TaskCategory.LIMPEZA, 5, TaskDeadline.HOJE, "feita", "u_carla", isDone = true, iconHint = TaskIconHint.DROP),
-            UiAssignment("a_c2", "f_2", "Comprar detergente", TaskCategory.COMPRAS, 3, TaskDeadline.HOJE, "feita", "u_carla", isDone = true, iconHint = TaskIconHint.CART),
-            UiAssignment("a_c3", "f_3", "Pagar internet", TaskCategory.CONTAS, 3, TaskDeadline.HOJE, "feita", "u_carla", isDone = true, iconHint = TaskIconHint.RECEIPT),
-            UiAssignment("a_c4", "f_4", "Tirar o lixo (qua)", TaskCategory.LIMPEZA, 2, TaskDeadline.HOJE, "feita", "u_carla", isDone = true, iconHint = TaskIconHint.TRASH),
-            UiAssignment("a_c5", "f_8", "Adubar vasos", TaskCategory.OUTRAS, 2, TaskDeadline.HOJE, "feita", "u_carla", isDone = true, iconHint = TaskIconHint.LEAF),
-            UiAssignment("a_c6", null, "Limpar varanda", TaskCategory.LIMPEZA, 2, TaskDeadline.HOJE, "feita", "u_carla", isDone = true, iconHint = TaskIconHint.DROP),
-        )
-    }
-
-    private fun defaultRecurringTasksSeed(): List<UiRecurringTask> = listOf(
-        UiRecurringTask("f_1", "Lavar banheiro", TaskCategory.LIMPEZA, 8, TaskFrequency.SEMANAL, TaskIconHint.DROP),
-        UiRecurringTask("f_2", "Comprar sabão", TaskCategory.COMPRAS, 5, TaskFrequency.QUINZENAL, TaskIconHint.CART),
-        UiRecurringTask("f_3", "Pagar conta de luz", TaskCategory.CONTAS, 3, TaskFrequency.MENSAL, TaskIconHint.RECEIPT),
-        UiRecurringTask("f_4", "Tirar o lixo", TaskCategory.LIMPEZA, 2, TaskFrequency.DIARIA, TaskIconHint.TRASH),
-    )
 }
