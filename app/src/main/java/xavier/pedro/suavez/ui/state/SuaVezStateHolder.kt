@@ -498,6 +498,8 @@ class SuaVezStateHolder(
         category: TaskCategory,
         points: Int,
         frequency: TaskFrequency,
+        openInCurrentWeek: Boolean = false,
+        deadline: TaskDeadline? = null,
     ) {
         if (!isAdmin) return
         val cleanTitle = title.trim()
@@ -510,7 +512,21 @@ class SuaVezStateHolder(
                 frequencia = frequency,
             )
             fixedTasks = fixedTasks + newTask
-            showMessage("Tarefa fixa \"$cleanTitle\" criada")
+            if (openInCurrentWeek) {
+                val newAssignment = UiAssignment(
+                    id = "a_${nextId()}",
+                    fixedTaskId = newTask.id,
+                    titulo = cleanTitle,
+                    categoria = category,
+                    pontos = points,
+                    deadline = deadline ?: TaskDeadline.DOMINGO,
+                    assigneeUid = null,
+                )
+                assignments = listOf(newAssignment) + assignments
+                showMessage("Atividade recorrente \"$cleanTitle\" criada e aberta na semana")
+            } else {
+                showMessage("Atividade recorrente \"$cleanTitle\" criada")
+            }
         } else {
             fixedTasks = fixedTasks.map { task ->
                 if (task.id == editingId) {

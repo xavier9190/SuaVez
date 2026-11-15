@@ -18,7 +18,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import xavier.pedro.suavez.ui.components.ActivityFormSheet
 import xavier.pedro.suavez.ui.components.SuaVezButton
+import xavier.pedro.suavez.ui.components.ActivityFormSheet
 import xavier.pedro.suavez.ui.components.SuaVezButtonVariant
 import xavier.pedro.suavez.ui.components.SuaVezCard
 import xavier.pedro.suavez.ui.components.SuaVezIcon
@@ -26,7 +28,6 @@ import xavier.pedro.suavez.ui.components.SuaVezIconType
 import xavier.pedro.suavez.ui.components.SuaVezMark
 import xavier.pedro.suavez.ui.components.SuaVezOpenTaskCard
 import xavier.pedro.suavez.ui.components.SuaVezSubBar
-import xavier.pedro.suavez.ui.components.WeeklyTaskFormSheet
 import xavier.pedro.suavez.ui.state.SuaVezStateHolder
 import xavier.pedro.suavez.ui.theme.SuaVezDimens
 import xavier.pedro.suavez.ui.theme.SuaVezTheme
@@ -48,7 +49,7 @@ fun OpenTasksScreen(
             title = "Tarefas abertas",
             onBack = onBack,
             onAddClick = { showCreateSheet = true },
-            addContentDescription = "Nova tarefa da semana",
+            addContentDescription = "Criar atividade",
         )
 
         Column(
@@ -103,7 +104,7 @@ fun OpenTasksScreen(
                 }
 
                 SuaVezButton(
-                    text = "Nova tarefa da semana",
+                    text = "Criar atividade",
                     onClick = { showCreateSheet = true },
                     variant = SuaVezButtonVariant.Dashed,
                     leadingContent = {
@@ -129,11 +130,24 @@ fun OpenTasksScreen(
     }
 
     if (showCreateSheet) {
-        WeeklyTaskFormSheet(
+        ActivityFormSheet(
+            isAdmin = state.isAdmin,
             onDismiss = { showCreateSheet = false },
-            onSubmit = { title, category, points, deadline ->
+            onCreateWeeklyTask = { title, category, points, deadline ->
                 showCreateSheet = false
                 state.addWeeklyTask(title, category, points, deadline)
+            },
+            onSaveRecurringTask = { title, category, points, frequency, openInCurrentWeek, deadline ->
+                showCreateSheet = false
+                state.saveFixedTask(
+                    editingId = null,
+                    title = title,
+                    category = category,
+                    points = points,
+                    frequency = frequency,
+                    openInCurrentWeek = openInCurrentWeek,
+                    deadline = deadline,
+                )
             },
         )
     }

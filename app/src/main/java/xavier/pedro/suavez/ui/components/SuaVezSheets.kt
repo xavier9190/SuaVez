@@ -32,8 +32,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import xavier.pedro.suavez.data.model.TaskWeightLevel
 import xavier.pedro.suavez.ui.state.TaskCategory
@@ -84,132 +87,67 @@ fun SuaVezBottomSheet(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-fun WeeklyTaskFormSheet(
-    onDismiss: () -> Unit,
-    onSubmit: (title: String, category: TaskCategory, points: Int, deadline: TaskDeadline) -> Unit,
-) {
-    val colors = SuaVezTheme.colors
-    val typo = SuaVezTheme.typography
-
-    var title by remember { mutableStateOf("") }
-    var titleError by remember { mutableStateOf<String?>(null) }
-    var category by remember { mutableStateOf(TaskCategory.LIMPEZA) }
-    var effortPoints by remember { mutableIntStateOf(TaskWeightLevel.LIGHT.points) }
-    var deadline by remember { mutableStateOf(TaskDeadline.SABADO) }
-
-    SuaVezBottomSheet(onDismiss = onDismiss) {
-        Text(text = "Nova tarefa da semana", style = typo.title, color = colors.ink)
-
-        SuaVezInput(
-            value = title,
-            onValueChange = {
-                title = it
-                if (titleError != null) titleError = null
-            },
-            label = "Nome",
-            placeholder = "Ex.: Limpar a geladeira",
-            error = titleError,
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-        )
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = "Categoria", style = typo.label, color = colors.ink)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TaskCategory.entries.forEach { cat ->
-                    SuaVezOptionChip(
-                        text = cat.label,
-                        selected = category == cat,
-                        onClick = { category = cat },
-                    )
-                }
-            }
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = "Esforço", style = typo.label, color = colors.ink)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TaskWeightLevel.entries.forEach { level ->
-                    SuaVezOptionChip(
-                        text = level.label,
-                        selected = effortPoints == level.points,
-                        onClick = { effortPoints = level.points },
-                        tone = when (level) {
-                            TaskWeightLevel.LIGHT -> OptionChipTone.Default
-                            TaskWeightLevel.MEDIUM -> OptionChipTone.EffortMedia
-                            TaskWeightLevel.HEAVY -> OptionChipTone.EffortPesada
-                        },
-                    )
-                }
-            }
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = "Prazo", style = typo.label, color = colors.ink)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TaskDeadline.entries.forEach { d ->
-                    SuaVezOptionChip(
-                        text = d.label,
-                        selected = deadline == d,
-                        onClick = { deadline = d },
-                    )
-                }
-            }
-        }
-
-        Column(
-            modifier = Modifier.padding(top = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            SuaVezButton(
-                text = "Adicionar tarefa",
-                onClick = {
-                    if (title.trim().isEmpty()) {
-                        titleError = "Digite o nome da tarefa"
-                    } else {
-                        onSubmit(title, category, effortPoints, deadline)
-                    }
-                },
-                variant = SuaVezButtonVariant.Primary,
-            )
-            SuaVezButton(
-                text = "Cancelar",
-                onClick = onDismiss,
-                variant = SuaVezButtonVariant.Ghost,
-            )
-        }
-    }
+enum class ActivityRecurrenceType(val label: String) {
+    UNICA("Única (esta semana)"),
+    RECORRENTE("Recorrente"),
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun FixedTaskFormSheet(
-    editingTask: UiFixedTask?,
+fun ActivityFormSheet(
+    isAdmin: Boolean,
+    editingTask: UiFixedTask? = null,
     onDismiss: () -> Unit,
-    onSave: (title: String, category: TaskCategory, points: Int, frequency: TaskFrequency) -> Unit,
-    onDelete: ((UiFixedTask) -> Unit)? = null,
+    onCreateWeeklyTask: (
+        title: String,
+        category: TaskCategory,
+        points: Int,
+        deadline: TaskDeadline,
+    ) -> Unit = { _, _, _, _ -> },
+    onSaveRecurringTask: (
+        title: String,
+        category: TaskCategory,
+        points: Int,
+        frequency: TaskFrequency,
+        openInCurrentWeek: Boolean,
+        deadline: TaskDeadline?,
+    ) -> Unit = { _, _, _, _, _, _ -> },
+    onDeleteRecurringTask: ((UiFixedTask) -> Unit)? = null,
 ) {
     val colors = SuaVezTheme.colors
     val typo = SuaVezTheme.typography
+    val isEditing = editingTask != null
 
     var title by remember(editingTask) { mutableStateOf(editingTask?.titulo ?: "") }
-    var titleError by remember { mutableStateOf<String?>(null) }
-    var category by remember(editingTask) { mutableStateOf(editingTask?.categoria ?: TaskCategory.LIMPEZA) }
-    var effortPoints by remember(editingTask) {
-        mutableIntStateOf(editingTask?.effortLevel?.points ?: TaskWeightLevel.MEDIUM.points)
+    var category by remember(editingTask) { mutableStateOf(editingTask?.categoria) }
+    var effortPoints by remember(editingTask) { mutableStateOf(editingTask?.effortLevel?.points) }
+    var recurrenceType by remember(editingTask, isAdmin) {
+        mutableStateOf(
+            when {
+                isEditing -> ActivityRecurrenceType.RECORRENTE
+                !isAdmin -> ActivityRecurrenceType.UNICA
+                else -> null
+            },
+        )
     }
-    var frequency by remember(editingTask) { mutableStateOf(editingTask?.frequencia ?: TaskFrequency.SEMANAL) }
+    var deadline by remember(editingTask) { mutableStateOf<TaskDeadline?>(null) }
+    var frequency by remember(editingTask) { mutableStateOf(editingTask?.frequencia) }
+    var openInCurrentWeek by remember(editingTask) { mutableStateOf<Boolean?>(null) }
+
+    var titleError by remember { mutableStateOf<String?>(null) }
+    var categoryError by remember { mutableStateOf<String?>(null) }
+    var effortError by remember { mutableStateOf<String?>(null) }
+    var recurrenceError by remember { mutableStateOf<String?>(null) }
+    var deadlineError by remember { mutableStateOf<String?>(null) }
+    var frequencyError by remember { mutableStateOf<String?>(null) }
+    var openNowError by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
+
+    val showTypeSelector = !isEditing && isAdmin
+    val showFrequencySection = recurrenceType == ActivityRecurrenceType.RECORRENTE
+    val showOpenNowSection = !isEditing && recurrenceType == ActivityRecurrenceType.RECORRENTE
+    val showDeadlineSection = recurrenceType == ActivityRecurrenceType.UNICA ||
+        (showOpenNowSection && openInCurrentWeek == true)
 
     SuaVezBottomSheet(onDismiss = onDismiss) {
         Row(
@@ -218,11 +156,13 @@ fun FixedTaskFormSheet(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = if (editingTask == null) "Nova tarefa fixa" else "Editar tarefa fixa",
+                text = if (isEditing) "Editar tarefa recorrente" else "Criar atividade",
                 style = typo.title,
                 color = colors.ink,
             )
-            SuaVezChip(text = "Repete toda semana", variant = SuaVezChipVariant.Info)
+            if (isEditing) {
+                SuaVezChip(text = "Recorrente", variant = SuaVezChipVariant.Info)
+            }
         }
 
         SuaVezInput(
@@ -232,59 +172,141 @@ fun FixedTaskFormSheet(
                 if (titleError != null) titleError = null
             },
             label = "Nome",
-            placeholder = "Ex.: Lavar banheiro",
+            placeholder = if (showFrequencySection) "Ex.: Lavar banheiro" else "Ex.: Limpar a geladeira",
             error = titleError,
+            required = true,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
         )
 
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = "Categoria", style = typo.label, color = colors.ink)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TaskCategory.entries.forEach { cat ->
-                    SuaVezOptionChip(
-                        text = cat.label,
-                        selected = category == cat,
-                        onClick = { category = cat },
-                    )
-                }
+        FormFieldSection(
+            label = "Categoria",
+            required = true,
+            error = categoryError,
+        ) {
+            TaskCategory.entries.forEach { cat ->
+                SuaVezOptionChip(
+                    text = cat.label,
+                    selected = category == cat,
+                    isError = categoryError != null,
+                    onClick = {
+                        category = cat
+                        categoryError = null
+                    },
+                )
             }
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = "Esforço", style = typo.label, color = colors.ink)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+        FormFieldSection(
+            label = "Esforço",
+            required = true,
+            error = effortError,
+        ) {
+            TaskWeightLevel.entries.forEach { level ->
+                SuaVezOptionChip(
+                    text = level.label,
+                    selected = effortPoints == level.points,
+                    isError = effortError != null,
+                    onClick = {
+                        effortPoints = level.points
+                        effortError = null
+                    },
+                    tone = when (level) {
+                        TaskWeightLevel.LIGHT -> OptionChipTone.Default
+                        TaskWeightLevel.MEDIUM -> OptionChipTone.EffortMedia
+                        TaskWeightLevel.HEAVY -> OptionChipTone.EffortPesada
+                    },
+                )
+            }
+        }
+
+        if (showTypeSelector) {
+            FormFieldSection(
+                label = "Recorrência",
+                required = true,
+                error = recurrenceError,
             ) {
-                TaskWeightLevel.entries.forEach { level ->
+                ActivityRecurrenceType.entries.forEach { type ->
                     SuaVezOptionChip(
-                        text = level.label,
-                        selected = effortPoints == level.points,
-                        onClick = { effortPoints = level.points },
-                        tone = when (level) {
-                            TaskWeightLevel.LIGHT -> OptionChipTone.Default
-                            TaskWeightLevel.MEDIUM -> OptionChipTone.EffortMedia
-                            TaskWeightLevel.HEAVY -> OptionChipTone.EffortPesada
+                        text = type.label,
+                        selected = recurrenceType == type,
+                        isError = recurrenceError != null,
+                        onClick = {
+                            recurrenceType = type
+                            recurrenceError = null
+                            deadlineError = null
+                            frequencyError = null
+                            openNowError = null
                         },
                     )
                 }
             }
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(text = "Repetição", style = typo.label, color = colors.ink)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+        if (showFrequencySection) {
+            FormFieldSection(
+                label = "Frequência",
+                required = true,
+                error = frequencyError,
             ) {
                 TaskFrequency.entries.forEach { freq ->
                     SuaVezOptionChip(
                         text = freq.label,
                         selected = frequency == freq,
-                        onClick = { frequency = freq },
+                        isError = frequencyError != null,
+                        onClick = {
+                            frequency = freq
+                            frequencyError = null
+                        },
+                    )
+                }
+            }
+        }
+
+        if (showOpenNowSection) {
+            FormFieldSection(
+                label = "Abrir atividade na semana atual?",
+                required = true,
+                error = openNowError,
+            ) {
+                SuaVezOptionChip(
+                    text = "Já abrir agora",
+                    selected = openInCurrentWeek == true,
+                    isError = openNowError != null,
+                    onClick = {
+                        openInCurrentWeek = true
+                        openNowError = null
+                        deadlineError = null
+                    },
+                )
+                SuaVezOptionChip(
+                    text = "Deixar para a próxima semana",
+                    selected = openInCurrentWeek == false,
+                    isError = openNowError != null,
+                    onClick = {
+                        openInCurrentWeek = false
+                        openNowError = null
+                        deadline = null
+                        deadlineError = null
+                    },
+                )
+            }
+        }
+
+        if (showDeadlineSection) {
+            FormFieldSection(
+                label = "Prazo",
+                required = true,
+                error = deadlineError,
+            ) {
+                TaskDeadline.entries.forEach { d ->
+                    SuaVezOptionChip(
+                        text = d.label,
+                        selected = deadline == d,
+                        isError = deadlineError != null,
+                        onClick = {
+                            deadline = d
+                            deadlineError = null
+                        },
                     )
                 }
             }
@@ -295,19 +317,65 @@ fun FixedTaskFormSheet(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             SuaVezButton(
-                text = if (editingTask == null) "Criar tarefa fixa" else "Salvar alterações",
+                text = if (isEditing) "Salvar alterações" else "Criar atividade",
                 onClick = {
-                    if (title.trim().isEmpty()) {
-                        titleError = "Digite o nome da tarefa"
-                    } else {
-                        onSave(title, category, effortPoints, frequency)
+                    val cleanTitle = title.trim()
+                    var valid = true
+
+                    if (cleanTitle.isEmpty()) {
+                        titleError = "Digite o nome da atividade"
+                        valid = false
+                    }
+                    if (category == null) {
+                        categoryError = "Selecione uma categoria"
+                        valid = false
+                    }
+                    if (effortPoints == null) {
+                        effortError = "Selecione o nível de esforço"
+                        valid = false
+                    }
+                    if (showTypeSelector && recurrenceType == null) {
+                        recurrenceError = "Selecione o tipo da atividade"
+                        valid = false
+                    }
+                    if (showFrequencySection && frequency == null) {
+                        frequencyError = "Selecione a frequência"
+                        valid = false
+                    }
+                    if (showOpenNowSection && openInCurrentWeek == null) {
+                        openNowError = "Escolha se deseja abrir na semana atual"
+                        valid = false
+                    }
+                    if (showDeadlineSection && deadline == null) {
+                        deadlineError = "Selecione um prazo"
+                        valid = false
+                    }
+
+                    if (!valid) return@SuaVezButton
+
+                    val chosenCategory = category!!
+                    val chosenPoints = effortPoints!!
+                    when (recurrenceType!!) {
+                        ActivityRecurrenceType.UNICA -> {
+                            onCreateWeeklyTask(cleanTitle, chosenCategory, chosenPoints, deadline!!)
+                        }
+                        ActivityRecurrenceType.RECORRENTE -> {
+                            onSaveRecurringTask(
+                                cleanTitle,
+                                chosenCategory,
+                                chosenPoints,
+                                frequency!!,
+                                openInCurrentWeek ?: false,
+                                deadline,
+                            )
+                        }
                     }
                 },
                 variant = SuaVezButtonVariant.Primary,
             )
-            if (editingTask != null && onDelete != null) {
+            if (isEditing && onDeleteRecurringTask != null) {
                 SuaVezButton(
-                    text = "Excluir tarefa fixa",
+                    text = "Excluir tarefa recorrente",
                     onClick = { confirmDelete = true },
                     variant = SuaVezButtonVariant.Destructive,
                 )
@@ -321,18 +389,58 @@ fun FixedTaskFormSheet(
         }
     }
 
-    if (confirmDelete && editingTask != null && onDelete != null) {
+    if (confirmDelete && editingTask != null && onDeleteRecurringTask != null) {
         ConfirmActionDialog(
-            title = "Excluir tarefa fixa?",
+            title = "Excluir tarefa recorrente?",
             message = "A tarefa \"${editingTask.titulo}\" deixará de entrar nos próximos ciclos e no cálculo da cota.",
             confirmText = "Excluir",
             destructive = true,
             onConfirm = {
                 confirmDelete = false
-                onDelete(editingTask)
+                onDeleteRecurringTask(editingTask)
             },
             onDismiss = { confirmDelete = false },
         )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FormFieldSection(
+    label: String,
+    required: Boolean,
+    error: String?,
+    content: @Composable () -> Unit,
+) {
+    val colors = SuaVezTheme.colors
+    val typo = SuaVezTheme.typography
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = buildAnnotatedString {
+                append(label)
+                if (required) {
+                    withStyle(SpanStyle(color = colors.coral)) {
+                        append(" *")
+                    }
+                }
+            },
+            style = typo.label,
+            color = if (error != null) colors.coralInk else colors.ink,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            content()
+        }
+        if (error != null) {
+            Text(
+                text = error,
+                style = typo.meta,
+                color = colors.coralInk,
+            )
+        }
     }
 }
 

@@ -219,6 +219,43 @@ class SuaVezStateHolderTest {
     }
 
     @Test
+    fun adminCanCreateRecurringTaskOptionallyOpeningInCurrentWeek() = runBlocking {
+        val state = SuaVezStateHolder()
+        state.signInAs(TestProfile.ADMIN)
+
+        val initialFixedCount = state.fixedTasks.size
+        val initialOpenCount = state.openAssignments.size
+
+        state.saveFixedTask(
+            editingId = null,
+            title = "Limpar fogão",
+            category = TaskCategory.LIMPEZA,
+            points = 5,
+            frequency = TaskFrequency.SEMANAL,
+            openInCurrentWeek = false,
+            deadline = null,
+        )
+        assertEquals(initialFixedCount + 1, state.fixedTasks.size)
+        assertEquals(initialOpenCount, state.openAssignments.size)
+
+        state.saveFixedTask(
+            editingId = null,
+            title = "Aspirar sala",
+            category = TaskCategory.LIMPEZA,
+            points = 5,
+            frequency = TaskFrequency.SEMANAL,
+            openInCurrentWeek = true,
+            deadline = TaskDeadline.SABADO,
+        )
+        assertEquals(initialFixedCount + 2, state.fixedTasks.size)
+        assertEquals(initialOpenCount + 1, state.openAssignments.size)
+        val opened = state.openAssignments.first()
+        assertEquals("Aspirar sala", opened.titulo)
+        assertEquals(TaskDeadline.SABADO, opened.deadline)
+        assertEquals(state.fixedTasks.last().id, opened.fixedTaskId)
+    }
+
+    @Test
     fun adminCanTransferAndLeaveOrDestroyHouse() = runBlocking {
         val state = SuaVezStateHolder()
         state.signInAs(TestProfile.ADMIN)

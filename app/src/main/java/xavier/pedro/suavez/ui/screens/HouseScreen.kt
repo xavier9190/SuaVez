@@ -44,10 +44,10 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import xavier.pedro.suavez.data.model.HouseRole
+import xavier.pedro.suavez.ui.components.ActivityFormSheet
 import xavier.pedro.suavez.ui.components.EffortDot
 import xavier.pedro.suavez.ui.components.EffortIconCircle
 import xavier.pedro.suavez.ui.components.EffortPill
-import xavier.pedro.suavez.ui.components.FixedTaskFormSheet
 import xavier.pedro.suavez.ui.components.MemberActionsSheet
 import xavier.pedro.suavez.ui.components.SuaVezAvatar
 import xavier.pedro.suavez.ui.components.SuaVezButton
@@ -369,7 +369,7 @@ fun HouseScreen(
                 if (isAdmin) {
                     SuaVezRoundButton(
                         icon = SuaVezIconType.PLUS,
-                        contentDescription = "Nova tarefa fixa",
+                        contentDescription = "Criar atividade",
                         onClick = { showNewFixedSheet = true },
                         variant = SuaVezRoundButtonVariant.Primary,
                     )
@@ -458,7 +458,7 @@ fun HouseScreen(
 
             if (isAdmin) {
                 SuaVezButton(
-                    text = "Nova tarefa fixa",
+                    text = "Criar atividade",
                     onClick = { showNewFixedSheet = true },
                     variant = SuaVezButtonVariant.Dashed,
                     leadingContent = {
@@ -490,26 +490,31 @@ fun HouseScreen(
     }
 
     if (showNewFixedSheet) {
-        FixedTaskFormSheet(
-            editingTask = null,
+        ActivityFormSheet(
+            isAdmin = isAdmin,
             onDismiss = { showNewFixedSheet = false },
-            onSave = { title, cat, pts, freq ->
+            onCreateWeeklyTask = { title, cat, pts, deadline ->
                 showNewFixedSheet = false
-                state.saveFixedTask(null, title, cat, pts, freq)
+                state.addWeeklyTask(title, cat, pts, deadline)
+            },
+            onSaveRecurringTask = { title, cat, pts, freq, openInCurrentWeek, deadline ->
+                showNewFixedSheet = false
+                state.saveFixedTask(null, title, cat, pts, freq, openInCurrentWeek, deadline)
             },
         )
     }
 
     val taskToEdit = editingFixedTask
     if (taskToEdit != null) {
-        FixedTaskFormSheet(
+        ActivityFormSheet(
+            isAdmin = isAdmin,
             editingTask = taskToEdit,
             onDismiss = { editingFixedTask = null },
-            onSave = { title, cat, pts, freq ->
+            onSaveRecurringTask = { title, cat, pts, freq, _, _ ->
                 editingFixedTask = null
                 state.saveFixedTask(taskToEdit.id, title, cat, pts, freq)
             },
-            onDelete = { toDelete ->
+            onDeleteRecurringTask = { toDelete ->
                 editingFixedTask = null
                 state.deleteFixedTask(toDelete.id)
             },
