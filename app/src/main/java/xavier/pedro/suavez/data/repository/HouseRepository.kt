@@ -15,6 +15,8 @@ import xavier.pedro.suavez.data.model.Member
 import xavier.pedro.suavez.data.model.PreferenceLevel
 import xavier.pedro.suavez.data.model.User
 import xavier.pedro.suavez.ui.state.TaskCategory
+import xavier.pedro.suavez.ui.state.TestProfile
+import xavier.pedro.suavez.ui.state.TestProfileSession
 import java.util.Locale
 import kotlin.random.Random
 
@@ -62,6 +64,120 @@ class HouseRepository(
         if (!snapshot.exists()) null
         else snapshot.toObject(House::class.java)?.copy(id = snapshot.id)
     }
+
+    suspend fun loadOrBootstrapTestProfile(
+        profile: TestProfile,
+        semanaAtual: String = DateCycleUtils.currentIsoWeekKey(),
+        monthKey: String = DateCycleUtils.currentMonthKey(),
+    ): Result<TestProfileSession> = runCatching {
+        val userDocRef = usersCollection.document(profile.uid)
+        val userSnap = userDocRef.get().await()
+
+        if (userSnap.exists()) {
+            val existingUser = userSnap.toObject(User::class.java)?.copy(uid = userSnap.id)
+                ?: User(uid = profile.uid, nome = profile.nome, email = profile.email)
+            val houseId = existingUser.currentHouseId?.takeIf { it.isNotBlank() }
+                ?: return@runCatching TestProfileSession(
+                    user = existingUser,
+                    house = null,
+                    members = emptyList(),
+                )
+
+            val house = getHouse(houseId).getOrThrow()
+                ?: return@runCatching TestProfileSession(
+                    user = existingUser.copy(currentHouseId = null),
+                    house = null,
+                    members = emptyList(),
+                )
+            val members = fetchMembers(house.id)
+            return@runCatching TestProfileSession(user = existingUser, house = house, members = members)
+        }
+
+        // Primeiro acesso: inicializa a casa compartilhada padrão e os 2 perfis caso ainda não exista
+        val defaultHouseRef = housesCollection.document(DEFAULT_TEST_HOUSE_ID)
+        val defaultHouseSnap = defaultHouseRef.get().await()
+
+        if (!defaultHouseSnap.exists()) {
+            val house = House(
+                id = DEFAULT_TEST_HOUSE_ID,
+                nome = DEFAULT_TEST_HOUSE_NAME,
+                codigoConvite = DEFAULT_TEST_INVITE_CODE,
+                criadaPorUid = TestProfile.ADMIN.uid,
+                semanaAtual = semanaAtual,
+            )
+            val batch = firestore.batch()
+            batch.set(defaultHouseRef, house)
+
+            TaskCategory.entries.forEach { taskCat ->
+                val categoryModel = taskCat.toDefaultCategoryModel()
+                batch.set(
+                    defaultHouseRef.collection(SUBCOLLECTION_CATEGORIES).document(categoryModel.id),
+                    categoryModel,
+                )
+            }
+
+            TestProfile.entries.forEach { testProfile ->
+                batch.set(
+                    defaultHouseRef.collection(SUBCOLLECTION_MEMBERS).document(testProfile.uid),
+                    testProfile.toMember(monthKey),
+                )
+                batch.set(
+                    usersCollection.document(testProfile.uid),
+                    testProfile.toUserMap(DEFAULT_TEST_HOUSE_ID),
+                    SetOptions.merge(),
+                )
+            }
+
+            batch.commit().await()
+        } else {
+            val batch = firestore.batch()
+            val memberDocRef = defaultHouseRef.collection(SUBCOLLECTION_MEMBERS).document(profile.uid)
+            if (!memberDocRef.get().await().exists()) {
+                batch.set(memberDocRef, profile.toMember(monthKey))
+            }
+            batch.set(
+                userDocRef,
+                profile.toUserMap(DEFAULT_TEST_HOUSE_ID),
+                SetOptions.merge(),
+            )
+            batch.commit().await()
+        }
+
+        val createdHouse = getHouse(DEFAULT_TEST_HOUSE_ID).getOrThrow()
+        val members = fetchMembers(DEFAULT_TEST_HOUSE_ID)
+        val user = User(
+            uid = profile.uid,
+            nome = profile.nome,
+            email = profile.email,
+            currentHouseId = createdHouse?.id,
+        )
+        TestProfileSession(user = user, house = createdHouse, members = members)
+    }
+
+    private suspend fun fetchMembers(houseId: String): List<Member> {
+        val membersSnap = housesCollection.document(houseId)
+            .collection(SUBCOLLECTION_MEMBERS)
+            .get()
+            .await()
+        return membersSnap.documents.mapNotNull { doc ->
+            doc.toObject(Member::class.java)?.copy(uid = doc.id)
+        }
+    }
+
+    private fun TestProfile.toMember(monthKey: String): Member = Member(
+        uid = uid,
+        nome = nome,
+        papel = role.name,
+        pontosPorMes = mapOf(monthKey to 0),
+        preferences = emptyMap(),
+    )
+
+    private fun TestProfile.toUserMap(houseId: String): Map<String, Any?> = mapOf(
+        "uid" to uid,
+        "nome" to nome,
+        "email" to email,
+        "currentHouseId" to houseId,
+    )
 
     suspend fun createHouse(
         houseName: String,
@@ -317,6 +433,9 @@ class HouseRepository(
         const val SUBCOLLECTION_CATEGORIES = "categories"
         const val SUBCOLLECTION_TASKS = "tasks"
         const val SUBCOLLECTION_ASSIGNMENTS = "assignments"
+        const val DEFAULT_TEST_HOUSE_ID = "house_suavez_teste"
+        const val DEFAULT_TEST_HOUSE_NAME = "Casa Sua Vez (Teste)"
+        const val DEFAULT_TEST_INVITE_CODE = "SV-1000"
 
         fun formatInviteCode(suffix: Int): String =
             String.format(Locale.US, "SV-%04d", suffix.coerceIn(0, 9999))

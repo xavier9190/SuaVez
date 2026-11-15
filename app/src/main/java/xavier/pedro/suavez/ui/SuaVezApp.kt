@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,6 +29,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import xavier.pedro.suavez.data.repository.HouseRepository
 import xavier.pedro.suavez.ui.components.SuaVezAppBar
 import xavier.pedro.suavez.ui.components.SuaVezTabBar
 import xavier.pedro.suavez.ui.screens.HouseScreen
@@ -41,14 +44,23 @@ import xavier.pedro.suavez.ui.state.AppDestination
 import xavier.pedro.suavez.ui.state.MainTab
 import xavier.pedro.suavez.ui.state.SnackbarFeedback
 import xavier.pedro.suavez.ui.state.SuaVezStateHolder
+import xavier.pedro.suavez.ui.state.TestProfile
+import xavier.pedro.suavez.ui.state.TestProfileGateway
 import xavier.pedro.suavez.ui.theme.SuaVezDimens
 import xavier.pedro.suavez.ui.theme.SuaVezTheme
 
 @Composable
 fun SuaVezApp(
-    state: SuaVezStateHolder = remember { SuaVezStateHolder() },
+    state: SuaVezStateHolder = remember {
+        SuaVezStateHolder(
+            testProfileGateway = TestProfileGateway { profile ->
+                HouseRepository().loadOrBootstrapTestProfile(profile)
+            },
+        )
+    },
 ) {
     val colors = SuaVezTheme.colors
+    val scope = rememberCoroutineScope()
 
     BackHandler(enabled = state.destination != AppDestination.Login) {
         state.navigateBack()
@@ -70,9 +82,9 @@ fun SuaVezApp(
         when (state.destination) {
             AppDestination.Login -> {
                 LoginScreen(
-                    onSignInEmail = { email -> state.signInWithEmail(email) },
-                    onSignInGoogle = { state.signInWithGoogle() },
-                    onCreateAccount = { name, email -> state.createAccount(name, email) },
+                    isLoading = state.isAuthenticating,
+                    onSignInAsAdmin = { scope.launch { state.signInAs(TestProfile.ADMIN) } },
+                    onSignInAsMember = { scope.launch { state.signInAs(TestProfile.MEMBER) } },
                 )
             }
 
