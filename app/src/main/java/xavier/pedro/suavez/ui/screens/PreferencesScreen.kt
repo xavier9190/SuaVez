@@ -26,7 +26,7 @@ fun PreferencesScreen(
 ) {
     val colors = SuaVezTheme.colors
     val typo = SuaVezTheme.typography
-    val fixedTasks = state.fixedTasks
+    val recurringTasks = state.recurringTasks
 
     Column(
         modifier = modifier
@@ -53,7 +53,7 @@ fun PreferencesScreen(
             )
         }
 
-        if (fixedTasks.isEmpty()) {
+        if (recurringTasks.isEmpty()) {
             SuaVezCard {
                 Column(
                     modifier = Modifier
@@ -64,19 +64,19 @@ fun PreferencesScreen(
                 ) {
                     SuaVezMark(size = 40.dp)
                     Text(
-                        text = "Nenhuma tarefa fixa ainda",
+                        text = "Nenhuma tarefa recorrente ainda",
                         style = typo.itemTitle,
                         color = colors.ink,
                     )
                     Text(
-                        text = "Quando o admin cadastrar tarefas fixas na Casa, elas aparecerão aqui.",
+                        text = "Quando o admin cadastrar tarefas recorrentes na Casa, elas aparecerão aqui.",
                         style = typo.meta,
                         color = colors.muted,
                     )
                 }
             }
         } else {
-            fixedTasks.forEach { task ->
+            recurringTasks.forEach { task ->
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = task.titulo,

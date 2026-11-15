@@ -203,7 +203,7 @@ class AssignmentRepository(
         if (members.isEmpty()) return@runCatching emptyList()
 
         val tasksSnap = tasksCol(houseId).whereEqualTo("ativa", true).get().await()
-        val fixedTasks = tasksSnap.documents.mapNotNull { doc ->
+        val recurringTasks = tasksSnap.documents.mapNotNull { doc ->
             doc.toObject(Task::class.java)?.copy(id = doc.id)
         }
 
@@ -217,7 +217,7 @@ class AssignmentRepository(
 
         val decisions = computeGreedyDistribution(
             weekAssignments = weekAssignments,
-            fixedTasks = fixedTasks,
+            recurringTasks = recurringTasks,
             members = members,
             monthKey = monthKey,
         )
@@ -326,7 +326,7 @@ class AssignmentRepository(
 
         fun computeGreedyDistribution(
             weekAssignments: List<Assignment>,
-            fixedTasks: List<Task>,
+            recurringTasks: List<Task>,
             members: List<Member>,
             monthKey: String = DateCycleUtils.currentMonthKey(),
         ): List<GreedyDecision> {
@@ -337,7 +337,7 @@ class AssignmentRepository(
                 .sortedByDescending { it.peso }
             if (open.isEmpty()) return emptyList()
 
-            val totalCatalogPoints = fixedTasks.sumOf { it.peso }
+            val totalCatalogPoints = recurringTasks.sumOf { it.peso }
             val quota = if (totalCatalogPoints > 0) {
                 (totalCatalogPoints.toDouble() / members.size).roundToInt().toDouble()
             } else {

@@ -139,7 +139,7 @@ fun OpenTasksScreen(
             },
             onSaveRecurringTask = { title, category, points, frequency, openInCurrentWeek, deadline ->
                 showCreateSheet = false
-                state.saveFixedTask(
+                state.saveRecurringTask(
                     editingId = null,
                     title = title,
                     category = category,

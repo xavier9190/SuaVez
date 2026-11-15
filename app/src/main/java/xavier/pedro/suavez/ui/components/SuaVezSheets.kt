@@ -42,7 +42,7 @@ import xavier.pedro.suavez.data.model.TaskWeightLevel
 import xavier.pedro.suavez.ui.state.TaskCategory
 import xavier.pedro.suavez.ui.state.TaskDeadline
 import xavier.pedro.suavez.ui.state.TaskFrequency
-import xavier.pedro.suavez.ui.state.UiFixedTask
+import xavier.pedro.suavez.ui.state.UiRecurringTask
 import xavier.pedro.suavez.ui.state.UiMember
 import xavier.pedro.suavez.ui.theme.SuaVezDimens
 import xavier.pedro.suavez.ui.theme.SuaVezTheme
@@ -96,7 +96,7 @@ enum class ActivityRecurrenceType(val label: String) {
 @Composable
 fun ActivityFormSheet(
     isAdmin: Boolean,
-    editingTask: UiFixedTask? = null,
+    editingTask: UiRecurringTask? = null,
     onDismiss: () -> Unit,
     onCreateWeeklyTask: (
         title: String,
@@ -112,7 +112,7 @@ fun ActivityFormSheet(
         openInCurrentWeek: Boolean,
         deadline: TaskDeadline?,
     ) -> Unit = { _, _, _, _, _, _ -> },
-    onDeleteRecurringTask: ((UiFixedTask) -> Unit)? = null,
+    onDeleteRecurringTask: ((UiRecurringTask) -> Unit)? = null,
 ) {
     val colors = SuaVezTheme.colors
     val typo = SuaVezTheme.typography
