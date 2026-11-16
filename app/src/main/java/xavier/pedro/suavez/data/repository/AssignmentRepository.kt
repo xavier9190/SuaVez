@@ -138,6 +138,40 @@ class AssignmentRepository(
         assignment
     }
 
+    suspend fun updateWeeklyAssignment(
+        houseId: String,
+        assignmentId: String,
+        title: String,
+        category: TaskCategory,
+        points: Int,
+        deadline: TaskDeadline,
+    ): Result<Unit> = runCatching {
+        val cleanTitle = title.trim()
+        require(cleanTitle.isNotEmpty()) { "O título da tarefa não pode ser vazio." }
+
+        val docRef = assignmentsCol(houseId).document(assignmentId)
+        val isRollover = docRef.get().await().getBoolean("ehRollover") == true
+        docRef.update(
+            mapOf(
+                "titulo" to cleanTitle,
+                "peso" to points,
+                "deadline" to deadline.name,
+                "categoriaId" to category.name.lowercase(Locale.ROOT),
+                "categoriaNome" to category.label,
+                "urgente" to (isRollover || deadline == TaskDeadline.HOJE),
+            ),
+        ).await()
+    }
+
+    suspend fun deleteAssignment(
+        houseId: String,
+        assignmentId: String,
+    ): Result<Unit> = runCatching {
+        assignmentsCol(houseId).document(assignmentId)
+            .delete()
+            .await()
+    }
+
     suspend fun setTaskCompleted(
         houseId: String,
         assignment: Assignment,

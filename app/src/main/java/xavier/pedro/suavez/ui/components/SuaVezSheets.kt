@@ -42,6 +42,7 @@ import xavier.pedro.suavez.data.model.TaskWeightLevel
 import xavier.pedro.suavez.ui.state.TaskCategory
 import xavier.pedro.suavez.ui.state.TaskDeadline
 import xavier.pedro.suavez.ui.state.TaskFrequency
+import xavier.pedro.suavez.ui.state.UiAssignment
 import xavier.pedro.suavez.ui.state.UiRecurringTask
 import xavier.pedro.suavez.ui.state.UiMember
 import xavier.pedro.suavez.ui.theme.SuaVezDimens
@@ -97,6 +98,7 @@ enum class ActivityRecurrenceType(val label: String) {
 fun ActivityFormSheet(
     isAdmin: Boolean,
     editingTask: UiRecurringTask? = null,
+    editingAssignment: UiAssignment? = null,
     onDismiss: () -> Unit,
     onCreateWeeklyTask: (
         title: String,
@@ -113,26 +115,45 @@ fun ActivityFormSheet(
         deadline: TaskDeadline?,
     ) -> Unit = { _, _, _, _, _, _ -> },
     onDeleteRecurringTask: ((UiRecurringTask) -> Unit)? = null,
+    onUpdateWeeklyAssignment: (
+        assignmentId: String,
+        title: String,
+        category: TaskCategory,
+        points: Int,
+        deadline: TaskDeadline,
+    ) -> Unit = { _, _, _, _, _ -> },
+    onDeleteWeeklyAssignment: ((UiAssignment) -> Unit)? = null,
 ) {
     val colors = SuaVezTheme.colors
     val typo = SuaVezTheme.typography
-    val isEditing = editingTask != null
+    val isEditingRecurring = editingTask != null
+    val isEditingAssignment = editingAssignment != null
+    val isEditing = isEditingRecurring || isEditingAssignment
 
-    var title by remember(editingTask) { mutableStateOf(editingTask?.titulo ?: "") }
-    var category by remember(editingTask) { mutableStateOf(editingTask?.categoria) }
-    var effortPoints by remember(editingTask) { mutableStateOf(editingTask?.effortLevel?.points) }
-    var recurrenceType by remember(editingTask, isAdmin) {
+    var title by remember(editingTask, editingAssignment) {
+        mutableStateOf(editingTask?.titulo ?: editingAssignment?.titulo ?: "")
+    }
+    var category by remember(editingTask, editingAssignment) {
+        mutableStateOf(editingTask?.categoria ?: editingAssignment?.categoria)
+    }
+    var effortPoints by remember(editingTask, editingAssignment) {
+        mutableStateOf(editingTask?.effortLevel?.points ?: editingAssignment?.effortLevel?.points)
+    }
+    var recurrenceType by remember(editingTask, editingAssignment, isAdmin) {
         mutableStateOf(
             when {
-                isEditing -> ActivityRecurrenceType.RECORRENTE
+                isEditingRecurring -> ActivityRecurrenceType.RECORRENTE
+                isEditingAssignment -> ActivityRecurrenceType.UNICA
                 !isAdmin -> ActivityRecurrenceType.UNICA
                 else -> null
             },
         )
     }
-    var deadline by remember(editingTask) { mutableStateOf<TaskDeadline?>(null) }
-    var frequency by remember(editingTask) { mutableStateOf(editingTask?.frequencia) }
-    var openInCurrentWeek by remember(editingTask) { mutableStateOf<Boolean?>(null) }
+    var deadline by remember(editingTask, editingAssignment) {
+        mutableStateOf(editingAssignment?.let { it.deadline ?: TaskDeadline.SEM_PRAZO })
+    }
+    var frequency by remember(editingTask, editingAssignment) { mutableStateOf(editingTask?.frequencia) }
+    var openInCurrentWeek by remember(editingTask, editingAssignment) { mutableStateOf<Boolean?>(null) }
 
     var titleError by remember { mutableStateOf<String?>(null) }
     var categoryError by remember { mutableStateOf<String?>(null) }
@@ -142,6 +163,8 @@ fun ActivityFormSheet(
     var frequencyError by remember { mutableStateOf<String?>(null) }
     var openNowError by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
+    val canDelete = (isEditingRecurring && onDeleteRecurringTask != null) ||
+        (isEditingAssignment && onDeleteWeeklyAssignment != null)
 
     val showTypeSelector = !isEditing && isAdmin
     val showFrequencySection = recurrenceType == ActivityRecurrenceType.RECORRENTE
@@ -156,12 +179,19 @@ fun ActivityFormSheet(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = if (isEditing) "Editar tarefa recorrente" else "Criar atividade",
+                text = when {
+                    isEditingRecurring -> "Editar tarefa recorrente"
+                    isEditingAssignment -> "Editar atividade"
+                    else -> "Criar atividade"
+                },
                 style = typo.title,
                 color = colors.ink,
             )
             if (isEditing) {
-                SuaVezChip(text = "Recorrente", variant = SuaVezChipVariant.Info)
+                SuaVezChip(
+                    text = if (isEditingRecurring) "Recorrente" else "Única",
+                    variant = SuaVezChipVariant.Info,
+                )
             }
         }
 
@@ -357,7 +387,17 @@ fun ActivityFormSheet(
                     val chosenPoints = effortPoints!!
                     when (recurrenceType!!) {
                         ActivityRecurrenceType.UNICA -> {
-                            onCreateWeeklyTask(cleanTitle, chosenCategory, chosenPoints, deadline!!)
+                            if (editingAssignment != null) {
+                                onUpdateWeeklyAssignment(
+                                    editingAssignment.id,
+                                    cleanTitle,
+                                    chosenCategory,
+                                    chosenPoints,
+                                    deadline!!,
+                                )
+                            } else {
+                                onCreateWeeklyTask(cleanTitle, chosenCategory, chosenPoints, deadline!!)
+                            }
                         }
                         ActivityRecurrenceType.RECORRENTE -> {
                             onSaveRecurringTask(
@@ -373,9 +413,9 @@ fun ActivityFormSheet(
                 },
                 variant = SuaVezButtonVariant.Primary,
             )
-            if (isEditing && onDeleteRecurringTask != null) {
+            if (canDelete) {
                 SuaVezButton(
-                    text = "Excluir tarefa recorrente",
+                    text = if (isEditingRecurring) "Excluir tarefa recorrente" else "Excluir atividade",
                     onClick = { confirmDelete = true },
                     variant = SuaVezButtonVariant.Destructive,
                 )
@@ -389,15 +429,25 @@ fun ActivityFormSheet(
         }
     }
 
-    if (confirmDelete && editingTask != null && onDeleteRecurringTask != null) {
+    if (confirmDelete && canDelete) {
+        val deleteTitle = if (isEditingRecurring) "Excluir tarefa recorrente?" else "Excluir atividade?"
+        val deleteMessage = if (isEditingRecurring) {
+            "A tarefa \"${editingTask?.titulo}\" deixará de entrar nos próximos ciclos e no cálculo da cota."
+        } else {
+            "A atividade \"${editingAssignment?.titulo}\" será removida das tarefas desta semana."
+        }
         ConfirmActionDialog(
-            title = "Excluir tarefa recorrente?",
-            message = "A tarefa \"${editingTask.titulo}\" deixará de entrar nos próximos ciclos e no cálculo da cota.",
+            title = deleteTitle,
+            message = deleteMessage,
             confirmText = "Excluir",
             destructive = true,
             onConfirm = {
                 confirmDelete = false
-                onDeleteRecurringTask(editingTask)
+                if (editingTask != null) {
+                    onDeleteRecurringTask?.invoke(editingTask)
+                } else if (editingAssignment != null) {
+                    onDeleteWeeklyAssignment?.invoke(editingAssignment)
+                }
             },
             onDismiss = { confirmDelete = false },
         )

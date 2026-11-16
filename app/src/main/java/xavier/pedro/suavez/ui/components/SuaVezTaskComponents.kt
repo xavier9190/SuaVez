@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -286,6 +287,7 @@ fun SuaVezTaskCard(
 fun SuaVezOpenTaskCard(
     task: UiAssignment,
     onClaim: () -> Unit,
+    onEdit: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val colors = SuaVezTheme.colors
@@ -330,6 +332,26 @@ fun SuaVezOpenTaskCard(
                     level = level,
                     compact = true,
                 )
+            }
+
+            if (onEdit != null) {
+                Box(
+                    modifier = Modifier
+                        .defaultMinSize(
+                            minWidth = SuaVezDimens.MinTouchTarget,
+                            minHeight = SuaVezDimens.MinTouchTarget,
+                        )
+                        .clip(CircleShape)
+                        .semantics { contentDescription = "Editar ${task.titulo}" }
+                        .clickable(role = Role.Button, onClick = onEdit),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    SuaVezIcon(
+                        type = SuaVezIconType.PENCIL,
+                        tint = colors.muted,
+                        size = 18.dp,
+                    )
+                }
             }
 
             SuaVezButton(
