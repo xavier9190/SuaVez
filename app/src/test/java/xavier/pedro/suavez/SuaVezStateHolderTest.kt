@@ -306,6 +306,48 @@ class SuaVezStateHolderTest {
             testScope.cancel()
         }
     }
+
+    @Test
+    fun adminCanEditAndDeleteOpenWeeklyTaskButMemberCannot() = runBlocking {
+        val fake = FakeSuaVezDataSource()
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.signInAs(TestProfile.ADMIN)
+            state.addWeeklyTask("Lavar varanda", TaskCategory.LIMPEZA, 5, TaskDeadline.SABADO)
+            val created = state.openAssignments.first { it.titulo == "Lavar varanda" }
+
+            state.updateWeeklyAssignment(
+                assignmentId = created.id,
+                title = "Lavar varanda e quintal",
+                category = TaskCategory.OUTRAS,
+                points = 8,
+                deadline = TaskDeadline.HOJE,
+            )
+            val updated = state.openAssignments.first { it.id == created.id }
+            assertEquals("Lavar varanda e quintal", updated.titulo)
+            assertEquals(TaskCategory.OUTRAS, updated.categoria)
+            assertEquals(8, updated.pontos)
+            assertEquals(TaskDeadline.HOJE, updated.deadline)
+
+            // Membro comum não pode editar nem excluir tarefa aberta
+            state.signOut()
+            state.signInAs(TestProfile.MEMBER)
+            assertFalse(state.isAdmin)
+            state.updateWeeklyAssignment(created.id, "Hackeado", TaskCategory.LIMPEZA, 2, TaskDeadline.DOMINGO)
+            state.deleteWeeklyAssignment(created.id)
+            assertTrue(state.openAssignments.any { it.id == created.id && it.titulo == "Lavar varanda e quintal" })
+
+            // Admin consegue excluir a tarefa aberta
+            state.signOut()
+            state.signInAs(TestProfile.ADMIN)
+            state.deleteWeeklyAssignment(created.id)
+            assertFalse(state.openAssignments.any { it.id == created.id })
+            assertEquals("Atividade excluída", state.snackbar?.message)
+        } finally {
+            testScope.cancel()
+        }
+    }
 }
 
 private class FakeSuaVezDataSource(
@@ -609,6 +651,41 @@ private class FakeSuaVezDataSource(
             houseId to (listOf(assignment) + assignmentsByHouse.value[houseId].orEmpty())
             )
         assignment
+    }
+
+    override suspend fun updateWeeklyAssignment(
+        houseId: String,
+        assignmentId: String,
+        title: String,
+        category: TaskCategory,
+        points: Int,
+        deadline: TaskDeadline,
+    ): Result<Unit> = runCatching {
+        assignmentsByHouse.value = assignmentsByHouse.value + (
+            houseId to assignmentsByHouse.value[houseId].orEmpty().map { item ->
+                if (item.id == assignmentId) {
+                    item.copy(
+                        titulo = title.trim(),
+                        peso = points,
+                        deadline = deadline.name,
+                        categoriaId = category.name.lowercase(Locale.ROOT),
+                        categoriaNome = category.label,
+                        urgente = deadline == TaskDeadline.HOJE,
+                    )
+                } else {
+                    item
+                }
+            }
+            )
+    }
+
+    override suspend fun deleteAssignment(
+        houseId: String,
+        assignmentId: String,
+    ): Result<Unit> = runCatching {
+        assignmentsByHouse.value = assignmentsByHouse.value + (
+            houseId to assignmentsByHouse.value[houseId].orEmpty().filterNot { it.id == assignmentId }
+            )
     }
 
     override suspend fun claimOpenTask(

@@ -65,6 +65,20 @@ interface SuaVezDataSource {
         semana: String,
     ): Result<Assignment>
 
+    suspend fun updateWeeklyAssignment(
+        houseId: String,
+        assignmentId: String,
+        title: String,
+        category: TaskCategory,
+        points: Int,
+        deadline: TaskDeadline,
+    ): Result<Unit>
+
+    suspend fun deleteAssignment(
+        houseId: String,
+        assignmentId: String,
+    ): Result<Unit>
+
     suspend fun claimOpenTask(
         houseId: String,
         assignmentId: String,
@@ -196,6 +210,30 @@ class FirestoreSuaVezDataSource(
         deadline = deadline,
         createdByUid = createdByUid,
         semana = semana,
+    )
+
+    override suspend fun updateWeeklyAssignment(
+        houseId: String,
+        assignmentId: String,
+        title: String,
+        category: TaskCategory,
+        points: Int,
+        deadline: TaskDeadline,
+    ): Result<Unit> = assignmentRepository.updateWeeklyAssignment(
+        houseId = houseId,
+        assignmentId = assignmentId,
+        title = title,
+        category = category,
+        points = points,
+        deadline = deadline,
+    )
+
+    override suspend fun deleteAssignment(
+        houseId: String,
+        assignmentId: String,
+    ): Result<Unit> = assignmentRepository.deleteAssignment(
+        houseId = houseId,
+        assignmentId = assignmentId,
     )
 
     override suspend fun claimOpenTask(

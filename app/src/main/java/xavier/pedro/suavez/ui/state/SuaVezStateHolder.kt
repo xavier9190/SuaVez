@@ -466,6 +466,39 @@ class SuaVezStateHolder(
         }
     }
 
+    fun updateWeeklyAssignment(
+        assignmentId: String,
+        title: String,
+        category: TaskCategory,
+        points: Int,
+        deadline: TaskDeadline,
+    ) {
+        if (!isAdmin) return
+        val houseId = currentHouse?.id ?: return
+        scope.launch {
+            dataSource.updateWeeklyAssignment(
+                houseId = houseId,
+                assignmentId = assignmentId,
+                title = title,
+                category = category,
+                points = points,
+                deadline = deadline,
+            ).onSuccess {
+                showMessage("Alterações salvas")
+            }.onFailure { showError("Erro ao atualizar atividade", it) }
+        }
+    }
+
+    fun deleteWeeklyAssignment(assignmentId: String) {
+        if (!isAdmin) return
+        val houseId = currentHouse?.id ?: return
+        scope.launch {
+            dataSource.deleteAssignment(houseId, assignmentId)
+                .onSuccess { showMessage("Atividade excluída") }
+                .onFailure { showError("Erro ao excluir atividade", it) }
+        }
+    }
+
     fun distributePendingTasks() {
         if (!isAdmin) return
         val houseId = currentHouse?.id ?: return

@@ -20,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import xavier.pedro.suavez.ui.components.ActivityFormSheet
 import xavier.pedro.suavez.ui.components.SuaVezButton
-import xavier.pedro.suavez.ui.components.ActivityFormSheet
 import xavier.pedro.suavez.ui.components.SuaVezButtonVariant
 import xavier.pedro.suavez.ui.components.SuaVezCard
 import xavier.pedro.suavez.ui.components.SuaVezIcon
@@ -29,6 +28,7 @@ import xavier.pedro.suavez.ui.components.SuaVezMark
 import xavier.pedro.suavez.ui.components.SuaVezOpenTaskCard
 import xavier.pedro.suavez.ui.components.SuaVezSubBar
 import xavier.pedro.suavez.ui.state.SuaVezStateHolder
+import xavier.pedro.suavez.ui.state.UiAssignment
 import xavier.pedro.suavez.ui.theme.SuaVezDimens
 import xavier.pedro.suavez.ui.theme.SuaVezTheme
 
@@ -43,6 +43,7 @@ fun OpenTasksScreen(
     val visibleOpenTasks = state.openScreenAssignments
     val trulyOpenTasks = state.openAssignments
     var showCreateSheet by remember { mutableStateOf(false) }
+    var editingOpenTask by remember { mutableStateOf<UiAssignment?>(null) }
 
     Column(modifier = modifier.fillMaxSize()) {
         SuaVezSubBar(
@@ -99,6 +100,11 @@ fun OpenTasksScreen(
                         SuaVezOpenTaskCard(
                             task = task,
                             onClaim = { state.claimOpenTask(task.id) },
+                            onEdit = if (state.isAdmin && !task.justClaimedInSession) {
+                                { editingOpenTask = task }
+                            } else {
+                                null
+                            },
                         )
                     }
                 }
@@ -148,6 +154,23 @@ fun OpenTasksScreen(
                     openInCurrentWeek = openInCurrentWeek,
                     deadline = deadline,
                 )
+            },
+        )
+    }
+
+    val assignmentToEdit = editingOpenTask
+    if (assignmentToEdit != null) {
+        ActivityFormSheet(
+            isAdmin = state.isAdmin,
+            editingAssignment = assignmentToEdit,
+            onDismiss = { editingOpenTask = null },
+            onUpdateWeeklyAssignment = { id, title, category, points, deadline ->
+                editingOpenTask = null
+                state.updateWeeklyAssignment(id, title, category, points, deadline)
+            },
+            onDeleteWeeklyAssignment = { toDelete ->
+                editingOpenTask = null
+                state.deleteWeeklyAssignment(toDelete.id)
             },
         )
     }
