@@ -26,6 +26,7 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.navigation.fragment.findNavController
 import kotlinx.coroutines.launch
 import xavier.pedro.suavez.R
 import xavier.pedro.suavez.data.model.TaskWeightLevel
@@ -85,7 +86,7 @@ class TasksFragment : Fragment() {
     }
 
     private fun openOpenTasks() {
-        sharedViewModel.stateHolder.notifyMessage(getString(R.string.open_tasks_coming_soon))
+        findNavController().navigate(R.id.action_tasksFragment_to_openTasksFragment)
     }
 
     private fun renderTasksUi(model: TasksUiModel) {
