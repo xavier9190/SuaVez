@@ -25,6 +25,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,15 +79,16 @@ fun HouseScreen(
     val typo = SuaVezTheme.typography
     val context = LocalContext.current
 
-    val house = state.currentHouse ?: return
-    val currentUser = state.currentUser ?: return
-    val isAdmin = state.isAdmin
-    val members = state.members
-    val ranked = state.rankedMembers()
-    val maxScore = ranked.maxOfOrNull { state.memberWeeklyPoints(it.uid) } ?: 0
-    val nextInTurnUid = state.nextInTurnUid()
-    val recurringTasks = state.recurringTasks
-    val weeklyQuota = state.weeklyQuotaPerMember
+    val uiState by state.uiState.collectAsState()
+    val house = uiState.currentHouse ?: return
+    val currentUser = uiState.currentUser ?: return
+    val isAdmin = uiState.isAdmin
+    val members = uiState.members
+    val ranked = uiState.rankedMembers()
+    val maxScore = ranked.maxOfOrNull { uiState.memberWeeklyPoints(it.uid) } ?: 0
+    val nextInTurnUid = uiState.nextInTurnUid()
+    val recurringTasks = uiState.recurringTasks
+    val weeklyQuota = uiState.weeklyQuotaPerMember
 
     var copied by remember { mutableStateOf(false) }
     var managingMember by remember { mutableStateOf<UiMember?>(null) }
@@ -222,7 +224,7 @@ fun HouseScreen(
 
             Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 ranked.forEachIndexed { index, member ->
-                    val pts = state.memberWeeklyPoints(member.uid)
+                    val pts = uiState.memberWeeklyPoints(member.uid)
                     SuaVezRankRow(
                         name = member.nome,
                         idForColor = member.uid,
@@ -243,16 +245,16 @@ fun HouseScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (state.isBalanced()) {
+                if (uiState.isBalanced()) {
                     SuaVezChip(text = "Casa equilibrada", variant = SuaVezChipVariant.Ok)
                 } else {
                     SuaVezChip(
-                        text = "Diferença de ${state.balanceGapPercent()}%",
+                        text = "Diferença de ${uiState.balanceGapPercent()}%",
                         variant = SuaVezChipVariant.Vez,
                     )
                 }
                 Text(
-                    text = "${state.houseDoneCount} de ${state.houseTotalCount} tarefas feitas",
+                    text = "${uiState.houseDoneCount} de ${uiState.houseTotalCount} tarefas feitas",
                     style = typo.meta,
                     color = colors.muted,
                 )
@@ -274,8 +276,8 @@ fun HouseScreen(
             }
 
             members.forEach { member ->
-                val openCount = state.memberPendingCount(member.uid)
-                val openPts = state.memberPendingPoints(member.uid)
+                val openCount = uiState.memberPendingCount(member.uid)
+                val openPts = uiState.memberPendingPoints(member.uid)
                 val openMeta = if (openCount == 0) {
                     "0 abertas"
                 } else {

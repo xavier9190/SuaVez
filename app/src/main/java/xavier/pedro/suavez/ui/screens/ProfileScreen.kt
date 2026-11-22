@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,10 +43,11 @@ fun ProfileScreen(
     val colors = SuaVezTheme.colors
     val typo = SuaVezTheme.typography
 
-    val user = state.currentUser ?: return
-    val house = state.currentHouse
-    val isAdmin = state.isAdmin
-    val otherMembers = state.members.filterNot { it.uid == user.uid }
+    val uiState by state.uiState.collectAsState()
+    val user = uiState.currentUser ?: return
+    val house = uiState.currentHouse
+    val isAdmin = uiState.isAdmin
+    val otherMembers = uiState.members.filterNot { it.uid == user.uid }
 
     var showRenameDialog by remember { mutableStateOf(false) }
     var showLeaveAdminDialog by remember { mutableStateOf(false) }

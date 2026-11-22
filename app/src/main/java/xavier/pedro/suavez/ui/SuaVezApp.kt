@@ -20,6 +20,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -61,11 +63,13 @@ fun SuaVezApp(
         )
     }
 
-    BackHandler(enabled = holder.destination != AppDestination.Login) {
+    val uiState by holder.uiState.collectAsState()
+
+    BackHandler(enabled = uiState.destination != AppDestination.Login) {
         holder.navigateBack()
     }
 
-    val activeSnackbar = holder.snackbar
+    val activeSnackbar = uiState.snackbar
     LaunchedEffect(activeSnackbar?.id) {
         if (activeSnackbar != null) {
             delay(3000)
@@ -78,26 +82,26 @@ fun SuaVezApp(
             .fillMaxSize()
             .background(colors.bg),
     ) {
-        when (holder.destination) {
+        when (uiState.destination) {
             AppDestination.Login -> {
                 LoginScreen(
-                    isLoading = holder.isAuthenticating,
+                    isLoading = uiState.isAuthenticating,
                     onSignInAsAdmin = { scope.launch { holder.signInAs(TestProfile.ADMIN) } },
                     onSignInAsMember = { scope.launch { holder.signInAs(TestProfile.MEMBER) } },
                 )
             }
 
             AppDestination.NoHouse -> {
-                val user = holder.currentUser
+                val user = uiState.currentUser
                 Column(modifier = Modifier.fillMaxSize()) {
                     SuaVezAppBar(
                         houseName = null,
-                        userName = if (holder.activeTab != MainTab.PROFILE) user?.nome else null,
-                        userId = if (holder.activeTab != MainTab.PROFILE) user?.uid else null,
+                        userName = if (uiState.activeTab != MainTab.PROFILE) user?.nome else null,
+                        userId = if (uiState.activeTab != MainTab.PROFILE) user?.uid else null,
                         onAvatarClick = { holder.selectTab(MainTab.PROFILE) },
                     )
                     Box(modifier = Modifier.weight(1f)) {
-                        when (holder.activeTab) {
+                        when (uiState.activeTab) {
                             MainTab.PROFILE -> ProfileScreen(state = holder)
                             else -> NoHouseScreen(
                                 onCreateHouse = { name -> holder.createHouse(name) },
@@ -111,7 +115,7 @@ fun SuaVezApp(
                         )
                     }
                     SuaVezTabBar(
-                        activeTab = holder.activeTab,
+                        activeTab = uiState.activeTab,
                         hasHouse = false,
                         onSelectTab = { holder.selectTab(it) },
                     )
@@ -119,17 +123,17 @@ fun SuaVezApp(
             }
 
             AppDestination.Main -> {
-                val user = holder.currentUser
-                val house = holder.currentHouse
+                val user = uiState.currentUser
+                val house = uiState.currentHouse
                 Column(modifier = Modifier.fillMaxSize()) {
                     SuaVezAppBar(
                         houseName = house?.nome,
-                        userName = if (holder.activeTab != MainTab.PROFILE) user?.nome else null,
-                        userId = if (holder.activeTab != MainTab.PROFILE) user?.uid else null,
+                        userName = if (uiState.activeTab != MainTab.PROFILE) user?.nome else null,
+                        userId = if (uiState.activeTab != MainTab.PROFILE) user?.uid else null,
                         onAvatarClick = { holder.selectTab(MainTab.PROFILE) },
                     )
                     Box(modifier = Modifier.weight(1f)) {
-                        when (holder.activeTab) {
+                        when (uiState.activeTab) {
                             MainTab.TASKS -> TasksScreen(
                                 state = holder,
                                 onOpenTasksClick = { holder.openOpenTasks() },
@@ -145,7 +149,7 @@ fun SuaVezApp(
                         )
                     }
                     SuaVezTabBar(
-                        activeTab = holder.activeTab,
+                        activeTab = uiState.activeTab,
                         hasHouse = true,
                         onSelectTab = { holder.selectTab(it) },
                     )
@@ -174,7 +178,7 @@ fun SuaVezApp(
             }
         }
 
-        if (holder.destination == AppDestination.Login) {
+        if (uiState.destination == AppDestination.Login) {
             SnackbarBannerOverlay(
                 feedback = activeSnackbar,
                 onDismiss = { holder.clearSnackbar() },

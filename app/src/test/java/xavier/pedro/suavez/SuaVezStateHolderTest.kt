@@ -1,5 +1,7 @@
 package xavier.pedro.suavez
 
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -12,6 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import xavier.pedro.suavez.data.model.Assignment
@@ -31,6 +34,8 @@ import xavier.pedro.suavez.data.repository.RolloverPlan
 import xavier.pedro.suavez.data.repository.SuaVezDataSource
 import xavier.pedro.suavez.ui.state.AppDestination
 import xavier.pedro.suavez.ui.state.MainTab
+import xavier.pedro.suavez.ui.state.SuaVezAppContainer
+import xavier.pedro.suavez.ui.state.SuaVezSharedViewModel
 import xavier.pedro.suavez.ui.state.SuaVezStateHolder
 import xavier.pedro.suavez.ui.state.TaskCategory
 import xavier.pedro.suavez.ui.state.TaskDeadline
@@ -48,37 +53,37 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            assertEquals(AppDestination.Login, state.destination)
+            assertEquals(AppDestination.Login, state.uiState.value.destination)
 
             state.signInAs(TestProfile.ADMIN)
-            assertEquals(AppDestination.Main, state.destination)
-            assertEquals(MainTab.TASKS, state.activeTab)
-            assertEquals(TestProfile.ADMIN.uid, state.currentUser?.uid)
-            assertTrue(state.isAdmin)
+            assertEquals(AppDestination.Main, state.uiState.value.destination)
+            assertEquals(MainTab.TASKS, state.uiState.value.activeTab)
+            assertEquals(TestProfile.ADMIN.uid, state.uiState.value.currentUser?.uid)
+            assertTrue(state.uiState.value.isAdmin)
             // Sem tarefas mockadas iniciais
-            assertTrue(state.recurringTasks.isEmpty())
-            assertTrue(state.assignments.isEmpty())
+            assertTrue(state.uiState.value.recurringTasks.isEmpty())
+            assertTrue(state.uiState.value.assignments.isEmpty())
 
             state.openOpenTasks()
-            assertEquals(AppDestination.OpenTasks, state.destination)
-            assertEquals(MainTab.TASKS, state.activeTab)
+            assertEquals(AppDestination.OpenTasks, state.uiState.value.destination)
+            assertEquals(MainTab.TASKS, state.uiState.value.activeTab)
 
             assertTrue(state.navigateBack())
-            assertEquals(AppDestination.Main, state.destination)
+            assertEquals(AppDestination.Main, state.uiState.value.destination)
 
             state.selectTab(MainTab.HOUSE)
-            assertEquals(MainTab.HOUSE, state.activeTab)
+            assertEquals(MainTab.HOUSE, state.uiState.value.activeTab)
             assertTrue(state.navigateBack())
-            assertEquals(MainTab.TASKS, state.activeTab)
+            assertEquals(MainTab.TASKS, state.uiState.value.activeTab)
 
             state.signOut()
-            assertEquals(AppDestination.Login, state.destination)
-            assertNull(state.currentUser)
+            assertEquals(AppDestination.Login, state.uiState.value.destination)
+            assertNull(state.uiState.value.currentUser)
 
             state.signInAs(TestProfile.MEMBER)
-            assertEquals(AppDestination.Main, state.destination)
-            assertEquals(TestProfile.MEMBER.uid, state.currentUser?.uid)
-            assertFalse(state.isAdmin)
+            assertEquals(AppDestination.Main, state.uiState.value.destination)
+            assertEquals(TestProfile.MEMBER.uid, state.uiState.value.currentUser?.uid)
+            assertFalse(state.uiState.value.isAdmin)
         } finally {
             testScope.cancel()
         }
@@ -92,21 +97,21 @@ class SuaVezStateHolderTest {
         try {
             state.signInAs(TestProfile.MEMBER)
 
-            assertEquals(AppDestination.NoHouse, state.destination)
-            assertEquals(MainTab.HOUSE, state.activeTab)
-            assertNull(state.currentHouse)
+            assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
+            assertEquals(MainTab.HOUSE, state.uiState.value.activeTab)
+            assertNull(state.uiState.value.currentHouse)
 
             // Sem casa não navega para Tarefas nem Preferências
             state.selectTab(MainTab.TASKS)
-            assertEquals(MainTab.HOUSE, state.activeTab)
+            assertEquals(MainTab.HOUSE, state.uiState.value.activeTab)
 
             state.createHouse("República Sol")
-            assertEquals(AppDestination.Main, state.destination)
-            assertEquals(MainTab.TASKS, state.activeTab)
-            assertEquals("República Sol", state.currentHouse?.nome)
-            assertTrue(state.isAdmin)
-            assertTrue(state.recurringTasks.isEmpty())
-            assertTrue(state.assignments.isEmpty())
+            assertEquals(AppDestination.Main, state.uiState.value.destination)
+            assertEquals(MainTab.TASKS, state.uiState.value.activeTab)
+            assertEquals("República Sol", state.uiState.value.currentHouse?.nome)
+            assertTrue(state.uiState.value.isAdmin)
+            assertTrue(state.uiState.value.recurringTasks.isEmpty())
+            assertTrue(state.uiState.value.assignments.isEmpty())
         } finally {
             testScope.cancel()
         }
@@ -121,24 +126,24 @@ class SuaVezStateHolderTest {
             state.signInAs(TestProfile.ADMIN)
 
             state.addWeeklyTask("Lavar louça", TaskCategory.LIMPEZA, 5, TaskDeadline.HOJE)
-            val openTask = state.openAssignments.single()
+            val openTask = state.uiState.value.openAssignments.single()
             state.claimOpenTask(openTask.id)
 
-            assertEquals(0, state.myDonePoints)
-            assertEquals(5, state.myPendingPoints)
-            assertEquals(1, state.myPendingCount)
+            assertEquals(0, state.uiState.value.myDonePoints)
+            assertEquals(5, state.uiState.value.myPendingPoints)
+            assertEquals(1, state.uiState.value.myPendingCount)
 
             state.toggleTaskDone(openTask.id)
 
-            assertEquals(5, state.myDonePoints)
-            assertEquals(0, state.myPendingCount)
-            assertEquals(5, state.memberWeeklyPoints(TestProfile.ADMIN.uid))
-            assertEquals("Desfazer", state.snackbar?.actionLabel)
+            assertEquals(5, state.uiState.value.myDonePoints)
+            assertEquals(0, state.uiState.value.myPendingCount)
+            assertEquals(5, state.uiState.value.memberWeeklyPoints(TestProfile.ADMIN.uid))
+            assertEquals("Desfazer", state.uiState.value.snackbar?.actionLabel)
 
-            state.snackbar?.onAction?.invoke()
-            assertEquals(0, state.myDonePoints)
-            assertEquals(1, state.myPendingCount)
-            assertEquals(0, state.memberWeeklyPoints(TestProfile.ADMIN.uid))
+            state.uiState.value.snackbar?.onAction?.invoke()
+            assertEquals(0, state.uiState.value.myDonePoints)
+            assertEquals(1, state.uiState.value.myPendingCount)
+            assertEquals(0, state.uiState.value.memberWeeklyPoints(TestProfile.ADMIN.uid))
         } finally {
             testScope.cancel()
         }
@@ -161,16 +166,16 @@ class SuaVezStateHolderTest {
                 openInCurrentWeek = true,
                 deadline = TaskDeadline.SABADO,
             )
-            val recurringId = state.recurringTasks.single().id
+            val recurringId = state.uiState.value.recurringTasks.single().id
             state.setPreference(recurringId, PreferenceLevel.ODEIO)
 
             state.addWeeklyTask("Tirar o lixo", TaskCategory.LIMPEZA, 2, TaskDeadline.HOJE)
-            assertEquals(2, state.openAssignments.size)
+            assertEquals(2, state.uiState.value.openAssignments.size)
 
             state.distributePendingTasks()
-            assertEquals(0, state.openAssignments.size)
+            assertEquals(0, state.uiState.value.openAssignments.size)
 
-            val bathroomAssignment = state.assignments.first { it.recurringTaskId == recurringId }
+            val bathroomAssignment = state.uiState.value.assignments.first { it.recurringTaskId == recurringId }
             assertEquals(TestProfile.MEMBER.uid, bathroomAssignment.assigneeUid)
         } finally {
             testScope.cancel()
@@ -185,15 +190,15 @@ class SuaVezStateHolderTest {
         try {
             state.signInAs(TestProfile.MEMBER)
 
-            assertFalse(state.isAdmin)
+            assertFalse(state.uiState.value.isAdmin)
             state.saveRecurringTask(null, "Teste", TaskCategory.OUTRAS, 2, TaskFrequency.SEMANAL)
-            assertEquals(0, state.recurringTasks.size)
+            assertEquals(0, state.uiState.value.recurringTasks.size)
 
             state.addWeeklyTask("Avulsa", TaskCategory.OUTRAS, 2, TaskDeadline.DOMINGO)
-            assertEquals(1, state.openAssignments.size)
+            assertEquals(1, state.uiState.value.openAssignments.size)
 
             state.distributePendingTasks()
-            assertEquals(1, state.openAssignments.size)
+            assertEquals(1, state.uiState.value.openAssignments.size)
         } finally {
             testScope.cancel()
         }
@@ -216,8 +221,8 @@ class SuaVezStateHolderTest {
                 openInCurrentWeek = false,
                 deadline = null,
             )
-            assertEquals(1, state.recurringTasks.size)
-            assertEquals(0, state.openAssignments.size)
+            assertEquals(1, state.uiState.value.recurringTasks.size)
+            assertEquals(0, state.uiState.value.openAssignments.size)
 
             state.saveRecurringTask(
                 editingId = null,
@@ -228,9 +233,9 @@ class SuaVezStateHolderTest {
                 openInCurrentWeek = true,
                 deadline = TaskDeadline.SABADO,
             )
-            assertEquals(2, state.recurringTasks.size)
-            assertEquals(1, state.openAssignments.size)
-            val opened = state.openAssignments.single()
+            assertEquals(2, state.uiState.value.recurringTasks.size)
+            assertEquals(1, state.uiState.value.openAssignments.size)
+            val opened = state.uiState.value.openAssignments.single()
             assertEquals("Aspirar sala", opened.titulo)
             assertEquals(TaskDeadline.SABADO, opened.deadline)
 
@@ -242,15 +247,15 @@ class SuaVezStateHolderTest {
                 points = 8,
                 frequency = TaskFrequency.QUINZENAL,
             )
-            val editedTask = state.recurringTasks.first { it.id == aspirarId }
+            val editedTask = state.uiState.value.recurringTasks.first { it.id == aspirarId }
             assertEquals("Aspirar sala e tapete", editedTask.titulo)
             assertEquals(8, editedTask.pontos)
             assertEquals(TaskFrequency.QUINZENAL, editedTask.frequencia)
-            assertEquals("Aspirar sala e tapete", state.openAssignments.single().titulo)
+            assertEquals("Aspirar sala e tapete", state.uiState.value.openAssignments.single().titulo)
 
             state.deleteRecurringTask(aspirarId)
-            assertEquals(1, state.recurringTasks.size)
-            assertTrue(state.openAssignments.isEmpty())
+            assertEquals(1, state.uiState.value.recurringTasks.size)
+            assertTrue(state.uiState.value.openAssignments.isEmpty())
         } finally {
             testScope.cancel()
         }
@@ -265,9 +270,9 @@ class SuaVezStateHolderTest {
             state.signInAs(TestProfile.ADMIN)
             state.saveRecurringTask(null, "Lavar louça", TaskCategory.LIMPEZA, 3, TaskFrequency.DIARIA)
 
-            val taskId = state.recurringTasks.single().id
+            val taskId = state.uiState.value.recurringTasks.single().id
             state.setPreference(taskId, PreferenceLevel.GOSTO)
-            assertEquals(PreferenceLevel.GOSTO, state.getMyPreference(taskId))
+            assertEquals(PreferenceLevel.GOSTO, state.uiState.value.getMyPreference(taskId))
 
             assertTrue(isHouseBalanced(listOf(34, 32, 31)))
             assertFalse(isHouseBalanced(listOf(40, 20)))
@@ -288,20 +293,20 @@ class SuaVezStateHolderTest {
         try {
             state.signInAs(TestProfile.ADMIN)
             state.renameHouse("Casa Nova")
-            assertEquals("Casa Nova", state.currentHouse?.nome)
+            assertEquals("Casa Nova", state.uiState.value.currentHouse?.nome)
 
-            val member = state.members.first { it.role == HouseRole.MEMBER }
+            val member = state.uiState.value.members.first { it.role == HouseRole.MEMBER }
             state.transferAdminAndLeave(member.uid)
 
-            assertEquals(AppDestination.NoHouse, state.destination)
-            assertNull(state.currentHouse)
+            assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
+            assertNull(state.uiState.value.currentHouse)
 
             // Membro agora é admin e pode destruir a casa
             state.signInAs(TestProfile.MEMBER)
-            assertTrue(state.isAdmin)
+            assertTrue(state.uiState.value.isAdmin)
             state.destroyHouse()
-            assertEquals(AppDestination.NoHouse, state.destination)
-            assertNull(state.currentHouse)
+            assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
+            assertNull(state.uiState.value.currentHouse)
         } finally {
             testScope.cancel()
         }
@@ -315,7 +320,7 @@ class SuaVezStateHolderTest {
         try {
             state.signInAs(TestProfile.ADMIN)
             state.addWeeklyTask("Lavar varanda", TaskCategory.LIMPEZA, 5, TaskDeadline.SABADO)
-            val created = state.openAssignments.first { it.titulo == "Lavar varanda" }
+            val created = state.uiState.value.openAssignments.first { it.titulo == "Lavar varanda" }
 
             state.updateWeeklyAssignment(
                 assignmentId = created.id,
@@ -324,7 +329,7 @@ class SuaVezStateHolderTest {
                 points = 8,
                 deadline = TaskDeadline.HOJE,
             )
-            val updated = state.openAssignments.first { it.id == created.id }
+            val updated = state.uiState.value.openAssignments.first { it.id == created.id }
             assertEquals("Lavar varanda e quintal", updated.titulo)
             assertEquals(TaskCategory.OUTRAS, updated.categoria)
             assertEquals(8, updated.pontos)
@@ -333,19 +338,50 @@ class SuaVezStateHolderTest {
             // Membro comum não pode editar nem excluir tarefa aberta
             state.signOut()
             state.signInAs(TestProfile.MEMBER)
-            assertFalse(state.isAdmin)
+            assertFalse(state.uiState.value.isAdmin)
             state.updateWeeklyAssignment(created.id, "Hackeado", TaskCategory.LIMPEZA, 2, TaskDeadline.DOMINGO)
             state.deleteWeeklyAssignment(created.id)
-            assertTrue(state.openAssignments.any { it.id == created.id && it.titulo == "Lavar varanda e quintal" })
+            assertTrue(state.uiState.value.openAssignments.any { it.id == created.id && it.titulo == "Lavar varanda e quintal" })
 
             // Admin consegue excluir a tarefa aberta
             state.signOut()
             state.signInAs(TestProfile.ADMIN)
             state.deleteWeeklyAssignment(created.id)
-            assertFalse(state.openAssignments.any { it.id == created.id })
-            assertEquals("Atividade excluída", state.snackbar?.message)
+            assertFalse(state.uiState.value.openAssignments.any { it.id == created.id })
+            assertEquals("Atividade excluída", state.uiState.value.snackbar?.message)
         } finally {
             testScope.cancel()
+        }
+    }
+
+    @Test
+    fun sharedContainerAndViewModelPreserveStateAndObserversAcrossNavigation() = runBlocking {
+        val fake = FakeSuaVezDataSource()
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val container = SuaVezAppContainer(dataSource = fake, appScope = appScope)
+        val factory = SuaVezSharedViewModel.factory { container }
+
+        val loginStore = ViewModelStore()
+        val mainStore = ViewModelStore()
+        try {
+            val loginVm = ViewModelProvider(loginStore, factory)[SuaVezSharedViewModel::class.java]
+            val mainVm = ViewModelProvider(mainStore, factory)[SuaVezSharedViewModel::class.java]
+
+            assertSame(loginVm.stateHolder, mainVm.stateHolder)
+            assertSame(loginVm.uiState, mainVm.uiState)
+
+            loginVm.stateHolder.signInAs(TestProfile.ADMIN)
+            assertEquals(AppDestination.Main, mainVm.uiState.value.destination)
+
+            // Simula LoginActivity.finish() limpando seu ViewModelStore: observadores continuam ativos
+            loginStore.clear()
+
+            mainVm.stateHolder.addWeeklyTask("Regar plantas", TaskCategory.OUTRAS, 2, TaskDeadline.HOJE)
+            assertEquals(1, mainVm.uiState.value.openAssignments.size)
+            assertEquals("Regar plantas", mainVm.uiState.value.openAssignments.single().titulo)
+        } finally {
+            mainStore.clear()
+            appScope.cancel()
         }
     }
 }

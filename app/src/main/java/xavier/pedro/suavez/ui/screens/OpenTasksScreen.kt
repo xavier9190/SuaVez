@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,8 +41,9 @@ fun OpenTasksScreen(
 ) {
     val colors = SuaVezTheme.colors
     val typo = SuaVezTheme.typography
-    val visibleOpenTasks = state.openScreenAssignments
-    val trulyOpenTasks = state.openAssignments
+    val uiState by state.uiState.collectAsState()
+    val visibleOpenTasks = uiState.openScreenAssignments
+    val trulyOpenTasks = uiState.openAssignments
     var showCreateSheet by remember { mutableStateOf(false) }
     var editingOpenTask by remember { mutableStateOf<UiAssignment?>(null) }
 
@@ -100,7 +102,7 @@ fun OpenTasksScreen(
                         SuaVezOpenTaskCard(
                             task = task,
                             onClaim = { state.claimOpenTask(task.id) },
-                            onEdit = if (state.isAdmin && !task.justClaimedInSession) {
+                            onEdit = if (uiState.isAdmin && !task.justClaimedInSession) {
                                 { editingOpenTask = task }
                             } else {
                                 null
@@ -123,7 +125,7 @@ fun OpenTasksScreen(
                 )
             }
 
-            if (state.isAdmin) {
+            if (uiState.isAdmin) {
                 Spacer(modifier = Modifier.weight(1f).heightIn(min = 12.dp))
                 SuaVezButton(
                     text = "Distribuir pendentes",
@@ -137,7 +139,7 @@ fun OpenTasksScreen(
 
     if (showCreateSheet) {
         ActivityFormSheet(
-            isAdmin = state.isAdmin,
+            isAdmin = uiState.isAdmin,
             onDismiss = { showCreateSheet = false },
             onCreateWeeklyTask = { title, category, points, deadline ->
                 showCreateSheet = false
@@ -161,7 +163,7 @@ fun OpenTasksScreen(
     val assignmentToEdit = editingOpenTask
     if (assignmentToEdit != null) {
         ActivityFormSheet(
-            isAdmin = state.isAdmin,
+            isAdmin = uiState.isAdmin,
             editingAssignment = assignmentToEdit,
             onDismiss = { editingOpenTask = null },
             onUpdateWeeklyAssignment = { id, title, category, points, deadline ->

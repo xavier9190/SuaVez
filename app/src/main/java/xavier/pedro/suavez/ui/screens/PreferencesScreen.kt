@@ -9,6 +9,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -26,7 +28,8 @@ fun PreferencesScreen(
 ) {
     val colors = SuaVezTheme.colors
     val typo = SuaVezTheme.typography
-    val recurringTasks = state.recurringTasks
+    val uiState by state.uiState.collectAsState()
+    val recurringTasks = uiState.recurringTasks
 
     Column(
         modifier = modifier
@@ -84,7 +87,7 @@ fun PreferencesScreen(
                         color = colors.ink,
                     )
                     SuaVezPreferenceSegmented(
-                        selected = state.getMyPreference(task.id),
+                        selected = uiState.getMyPreference(task.id),
                         onSelect = { level -> state.setPreference(task.id, level) },
                     )
                 }
