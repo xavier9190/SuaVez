@@ -124,7 +124,7 @@ class MainActivity : AppCompatActivity() {
 
         navController.addOnDestinationChangedListener { _, destination, _ ->
             val menuItemId = when (destination.id) {
-                R.id.tasksFragment -> R.id.tasksFragment
+                R.id.tasksFragment, R.id.openTasksFragment -> R.id.tasksFragment
                 R.id.preferencesFragment -> R.id.preferencesFragment
                 R.id.houseFragment, R.id.noHouseFragment -> R.id.houseFragment
                 R.id.profileFragment -> R.id.profileFragment
@@ -192,7 +192,8 @@ class MainActivity : AppCompatActivity() {
 
         val targetDestId = when (shell.destination) {
             MainShellDestination.NO_HOUSE -> R.id.noHouseFragment
-            MainShellDestination.TASKS, MainShellDestination.OPEN_TASKS -> R.id.tasksFragment
+            MainShellDestination.TASKS -> R.id.tasksFragment
+            MainShellDestination.OPEN_TASKS -> R.id.openTasksFragment
             MainShellDestination.PREFERENCES -> R.id.preferencesFragment
             MainShellDestination.HOUSE -> R.id.houseFragment
             MainShellDestination.PROFILE -> R.id.profileFragment

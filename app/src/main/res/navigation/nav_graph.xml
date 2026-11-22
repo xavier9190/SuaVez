@@ -15,7 +15,17 @@
         android:id="@+id/tasksFragment"
         android:name="xavier.pedro.suavez.ui.TasksFragment"
         android:label="@string/nav_tasks"
-        tools:layout="@layout/fragment_tasks" />
+        tools:layout="@layout/fragment_tasks">
+        <action
+            android:id="@+id/action_tasksFragment_to_openTasksFragment"
+            app:destination="@id/openTasksFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/openTasksFragment"
+        android:name="xavier.pedro.suavez.ui.OpenTasksFragment"
+        android:label="@string/open_tasks_title"
+        tools:layout="@layout/fragment_open_tasks" />
 
     <fragment
         android:id="@+id/preferencesFragment"

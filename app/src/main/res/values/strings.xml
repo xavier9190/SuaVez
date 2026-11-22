@@ -119,4 +119,14 @@
     <string name="placeholder_house">Aba Casa será migrada em breve.</string>
     <string name="placeholder_profile_subtitle">Configurações completas de perfil serão migradas em breve.</string>
     <string name="action_sign_out">Sair da conta</string>
+    <!-- Open Tasks Fragment -->
+    <string name="open_tasks_title">Tarefas abertas</string>
+    <string name="open_tasks_subtitle">Tarefas avulsas desta semana. Quem pegar soma os pontos; o que sobrar entra no sorteio justo.</string>
+    <string name="open_tasks_empty_title">Nenhuma tarefa aberta</string>
+    <string name="open_tasks_empty_subtitle">Todas as tarefas da semana já foram atribuídas.</string>
+    <string name="open_tasks_claim_button">Assumir</string>
+    <string name="open_tasks_claimed_badge">Assumida por você</string>
+    <string name="open_tasks_distribute_pending">Distribuir pendentes</string>
+    <string name="cd_open_tasks_back">Voltar</string>
+    <string name="cd_open_tasks_edit">Editar atividade</string>
 </resources>
