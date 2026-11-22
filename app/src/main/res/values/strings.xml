@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">SuaVez</string>
+    <string name="google_web_client_id"
+        translatable="false">193953373596-7b875h9n976t2nf1d192ntpjkhgdupcm.apps.googleusercontent.com</string>
 </resources>
