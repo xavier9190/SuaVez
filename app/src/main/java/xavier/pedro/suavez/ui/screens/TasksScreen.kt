@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,22 +68,23 @@ fun TasksScreen(
     val colors = SuaVezTheme.colors
     val typo = SuaVezTheme.typography
 
-    val user = state.currentUser ?: return
-    val house = state.currentHouse ?: return
-    val myTasks = state.myAssignments
-    val openTasks = state.openAssignments
-    val donePts = state.myDonePoints
-    val totalPts = state.myTotalPoints
-    val pendingPts = state.myPendingPoints
-    val pendingCount = state.myPendingCount
+    val uiState by state.uiState.collectAsState()
+    val user = uiState.currentUser ?: return
+    val house = uiState.currentHouse ?: return
+    val myTasks = uiState.myAssignments
+    val openTasks = uiState.openAssignments
+    val donePts = uiState.myDonePoints
+    val totalPts = uiState.myTotalPoints
+    val pendingPts = uiState.myPendingPoints
+    val pendingCount = uiState.myPendingCount
 
     val doneFraction = if (totalPts > 0) donePts.toFloat() / totalPts.toFloat() else 0f
     val pendingFraction = if (totalPts > 0) pendingPts.toFloat() / totalPts.toFloat() else 0f
     val firstPendingId = myTasks.firstOrNull { !it.isDone }?.id
 
-    val houseDone = state.houseDoneCount
-    val houseTotal = state.houseTotalCount
-    val housePct = state.houseCompletionPercent
+    val houseDone = uiState.houseDoneCount
+    val houseTotal = uiState.houseTotalCount
+    val housePct = uiState.houseCompletionPercent
     val houseRemaining = (houseTotal - houseDone).coerceAtLeast(0)
     var showCreateActivitySheet by remember { mutableStateOf(false) }
 
@@ -114,7 +116,7 @@ fun TasksScreen(
                     color = colors.ink,
                 )
                 Text(
-                    text = "Semana ${house.semanaNumero} · ${state.members.size} moradores",
+                    text = "Semana ${house.semanaNumero} · ${uiState.members.size} moradores",
                     style = typo.meta,
                     color = colors.muted,
                 )
@@ -337,7 +339,7 @@ fun TasksScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        state.members.take(5).forEachIndexed { index, member ->
+                        uiState.members.take(5).forEachIndexed { index, member ->
                             SuaVezAvatar(
                                 name = member.nome,
                                 idForColor = member.uid,
@@ -450,7 +452,7 @@ fun TasksScreen(
 
     if (showCreateActivitySheet) {
         ActivityFormSheet(
-            isAdmin = state.isAdmin,
+            isAdmin = uiState.isAdmin,
             onDismiss = { showCreateActivitySheet = false },
             onCreateWeeklyTask = { title, category, points, deadline ->
                 showCreateActivitySheet = false

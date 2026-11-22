@@ -1,14 +1,14 @@
 package xavier.pedro.suavez.ui.state
 
-import androidx.compose.runtime.Stable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import xavier.pedro.suavez.data.model.Assignment
 import xavier.pedro.suavez.data.model.House
@@ -24,7 +24,6 @@ import xavier.pedro.suavez.data.repository.toUiHouse
 import xavier.pedro.suavez.data.repository.toUiMember
 import xavier.pedro.suavez.data.repository.toUiRecurringTask
 import xavier.pedro.suavez.data.repository.toUiUser
-import kotlin.math.roundToInt
 
 /**
  * Perfis padrão fixos de teste usados na tela inicial para validar a persistência
@@ -63,38 +62,16 @@ data class SnackbarFeedback(
     val onAction: (() -> Unit)? = null,
 )
 
-@Stable
 class SuaVezStateHolder(
     private val dataSource: SuaVezDataSource,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
 
-    var destination by mutableStateOf<AppDestination>(AppDestination.Login)
-        private set
+    private val _uiState = MutableStateFlow(SuaVezUiState())
+    val uiState: StateFlow<SuaVezUiState> = _uiState.asStateFlow()
 
-    var isAuthenticating by mutableStateOf(false)
-        private set
-
-    var activeTab by mutableStateOf(MainTab.TASKS)
-        private set
-
-    var currentUser by mutableStateOf<UiUser?>(null)
-        private set
-
-    var currentHouse by mutableStateOf<UiHouse?>(null)
-        private set
-
-    var members by mutableStateOf<List<UiMember>>(emptyList())
-        private set
-
-    var recurringTasks by mutableStateOf<List<UiRecurringTask>>(emptyList())
-        private set
-
-    var assignments by mutableStateOf<List<UiAssignment>>(emptyList())
-        private set
-
-    var snackbar by mutableStateOf<SnackbarFeedback?>(null)
-        private set
+    private val state: SuaVezUiState
+        get() = _uiState.value
 
     private var rawAssignments: List<Assignment> = emptyList()
     private var currentWeekKey: String = DateCycleUtils.currentIsoWeekKey()
@@ -104,151 +81,98 @@ class SuaVezStateHolder(
     private var houseObservationJob: Job? = null
     private var weekAssignmentsJob: Job? = null
 
-    val currentMember: UiMember?
-        get() = currentUser?.let { user -> members.firstOrNull { it.uid == user.uid } }
-
-    val isAdmin: Boolean
-        get() = currentMember?.role == HouseRole.ADMIN
-
-    val myAssignments: List<UiAssignment>
-        get() {
-            val uid = currentUser?.uid ?: return emptyList()
-            val mine = assignments.filter { it.assigneeUid == uid }
-            val pending = mine.filter { !it.isDone }
-                .sortedBy { it.deadline?.urgencyOrder ?: 99 }
-            val done = mine.filter { it.isDone }
-            return pending + done
-        }
-
-    val openAssignments: List<UiAssignment>
-        get() = assignments.filter { it.assigneeUid == null && !it.isDone }
-
-    val openScreenAssignments: List<UiAssignment>
-        get() = assignments.filter { (it.assigneeUid == null || it.justClaimedInSession) && !it.isDone }
-
-    val weeklyQuotaPerMember: Int
-        get() = calculateWeeklyQuota(recurringTasks, members.size.coerceAtLeast(1))
-
-    val myDonePoints: Int
-        get() = myAssignments.filter { it.isDone }.sumOf { it.pontos }
-
-    val myTotalPoints: Int
-        get() {
-            val assignedSum = myAssignments.sumOf { it.pontos }
-            return maxOf(assignedSum, weeklyQuotaPerMember)
-        }
-
-    val myPendingPoints: Int
-        get() = (myTotalPoints - myDonePoints).coerceAtLeast(0)
-
-    val myPendingCount: Int
-        get() = myAssignments.count { !it.isDone }
-
-    val houseDoneCount: Int
-        get() = assignments.count { it.isDone }
-
-    val houseTotalCount: Int
-        get() = assignments.size
-
-    val houseCompletionPercent: Int
-        get() {
-            if (houseTotalCount == 0) return 0
-            return ((houseDoneCount.toFloat() / houseTotalCount.toFloat()) * 100f).roundToInt()
-        }
-
-    fun memberWeeklyPoints(uid: String): Int =
-        members.firstOrNull { it.uid == uid }?.monthlyPoints ?: 0
-
-    fun memberPendingCount(uid: String): Int =
-        assignments.count { it.assigneeUid == uid && !it.isDone }
-
-    fun memberPendingPoints(uid: String): Int =
-        assignments.filter { it.assigneeUid == uid && !it.isDone }.sumOf { it.pontos }
-
-    fun nextInTurnUid(): String? {
-        if (members.isEmpty()) return null
-        return members.minByOrNull { memberWeeklyPoints(it.uid) + memberPendingPoints(it.uid) }?.uid
-    }
-
-    fun rankedMembers(): List<UiMember> =
-        members.sortedByDescending { memberWeeklyPoints(it.uid) }
-
-    fun isBalanced(): Boolean =
-        isHouseBalanced(members.map { memberWeeklyPoints(it.uid) })
-
-    fun balanceGapPercent(): Int {
-        val scores = members.map { memberWeeklyPoints(it.uid) }
-        val max = scores.maxOrNull() ?: return 0
-        val min = scores.minOrNull() ?: return 0
-        if (max <= 0) return 0
-        return (((max - min).toDouble() / max.toDouble()) * 100.0).roundToInt()
-    }
-
     // --- Navegação ---
 
     fun selectTab(tab: MainTab) {
-        if (currentHouse == null && (tab == MainTab.TASKS || tab == MainTab.PREFERENCES)) {
-            return
+        _uiState.update { current ->
+            if (current.currentHouse == null && (tab == MainTab.TASKS || tab == MainTab.PREFERENCES)) {
+                return@update current
+            }
+            current.copy(
+                activeTab = tab,
+                destination = if (current.currentHouse == null) AppDestination.NoHouse else AppDestination.Main,
+            )
         }
-        activeTab = tab
-        destination = if (currentHouse == null) AppDestination.NoHouse else AppDestination.Main
     }
 
     fun openOpenTasks() {
-        if (currentHouse == null) return
+        if (state.currentHouse == null) return
         claimedInSessionIds.clear()
-        assignments = assignments.map { it.copy(justClaimedInSession = false) }
-        activeTab = MainTab.TASKS
-        destination = AppDestination.OpenTasks
+        _uiState.update { current ->
+            current.copy(
+                assignments = current.assignments.map { it.copy(justClaimedInSession = false) },
+                activeTab = MainTab.TASKS,
+                destination = AppDestination.OpenTasks,
+            )
+        }
     }
 
     fun navigateBack(): Boolean {
-        return when (destination) {
-            AppDestination.OpenTasks -> {
-                destination = AppDestination.Main
-                activeTab = MainTab.TASKS
-                true
-            }
-            AppDestination.Main -> {
-                if (activeTab != MainTab.TASKS) {
-                    activeTab = MainTab.TASKS
-                    true
-                } else {
-                    false
+        var handled = false
+        _uiState.update { current ->
+            when (current.destination) {
+                AppDestination.OpenTasks -> {
+                    handled = true
+                    current.copy(destination = AppDestination.Main, activeTab = MainTab.TASKS)
+                }
+                AppDestination.Main -> {
+                    if (current.activeTab != MainTab.TASKS) {
+                        handled = true
+                        current.copy(activeTab = MainTab.TASKS)
+                    } else {
+                        handled = false
+                        current
+                    }
+                }
+                AppDestination.NoHouse -> {
+                    if (current.activeTab != MainTab.HOUSE) {
+                        handled = true
+                        current.copy(activeTab = MainTab.HOUSE)
+                    } else {
+                        handled = false
+                        current
+                    }
+                }
+                AppDestination.Login -> {
+                    handled = false
+                    current
                 }
             }
-            AppDestination.NoHouse -> {
-                if (activeTab != MainTab.HOUSE) {
-                    activeTab = MainTab.HOUSE
-                    true
-                } else {
-                    false
-                }
-            }
-            AppDestination.Login -> false
         }
+        return handled
     }
 
     // --- Autenticação (perfis padrão de teste) ---
 
     suspend fun signInAs(profile: TestProfile) {
-        isAuthenticating = true
+        _uiState.update { it.copy(isAuthenticating = true) }
         try {
             dataSource.loadOrBootstrapTestProfile(profile)
                 .onSuccess { session ->
-                    currentUser = session.user.toUiUser()
-                    recurringTasks = emptyList()
-                    assignments = emptyList()
                     rawAssignments = emptyList()
                     claimedInSessionIds.clear()
                     val house = session.house
                     if (house == null) {
                         stopObservingHouse()
-                        currentHouse = null
-                        members = emptyList()
-                        activeTab = MainTab.HOUSE
-                        destination = AppDestination.NoHouse
+                        _uiState.update { current ->
+                            current.copy(
+                                currentUser = session.user.toUiUser(),
+                                currentHouse = null,
+                                members = emptyList(),
+                                recurringTasks = emptyList(),
+                                assignments = emptyList(),
+                                activeTab = MainTab.HOUSE,
+                                destination = AppDestination.NoHouse,
+                            )
+                        }
                     } else {
+                        _uiState.update { current ->
+                            current.copy(
+                                currentUser = session.user.toUiUser(),
+                                recurringTasks = emptyList(),
+                                assignments = emptyList(),
+                            )
+                        }
                         enterHouseSession(house, session.members)
                     }
                 }
@@ -256,27 +180,31 @@ class SuaVezStateHolder(
                     showError("Erro ao entrar", error)
                 }
         } finally {
-            isAuthenticating = false
+            _uiState.update { it.copy(isAuthenticating = false) }
         }
     }
 
     fun signOut() {
         stopObservingHouse()
-        currentUser = null
-        currentHouse = null
-        members = emptyList()
-        recurringTasks = emptyList()
-        assignments = emptyList()
         rawAssignments = emptyList()
         claimedInSessionIds.clear()
-        activeTab = MainTab.TASKS
-        destination = AppDestination.Login
+        _uiState.update { current ->
+            current.copy(
+                currentUser = null,
+                currentHouse = null,
+                                members = emptyList(),
+                recurringTasks = emptyList(),
+                assignments = emptyList(),
+                activeTab = MainTab.TASKS,
+                destination = AppDestination.Login,
+            )
+        }
     }
 
     // --- Casa (sem casa -> com casa) ---
 
     fun createHouse(houseName: String) {
-        val user = currentUser ?: return
+        val user = state.currentUser ?: return
         scope.launch {
             dataSource.createHouse(houseName, user.toFirestoreUser())
                 .onSuccess { house ->
@@ -288,7 +216,7 @@ class SuaVezStateHolder(
     }
 
     fun joinHouseByCode(code: String) {
-        val user = currentUser ?: return
+        val user = state.currentUser ?: return
         scope.launch {
             dataSource.joinHouseByCode(code, user.toFirestoreUser())
                 .onSuccess { house ->
@@ -300,14 +228,20 @@ class SuaVezStateHolder(
     }
 
     private suspend fun enterHouseSession(house: House, initialMembers: List<Member>) {
-        currentHouse = house.toUiHouse()
-        if (initialMembers.isNotEmpty()) {
-            members = initialMembers.map { it.toUiMember() }
-        }
         val initialWeek = house.semanaAtual.ifBlank { DateCycleUtils.currentIsoWeekKey() }
         currentWeekKey = initialWeek
-        activeTab = MainTab.TASKS
-        destination = AppDestination.Main
+        _uiState.update { current ->
+            current.copy(
+                currentHouse = house.toUiHouse(),
+                members = if (initialMembers.isNotEmpty()) {
+                    initialMembers.map { it.toUiMember() }
+                } else {
+                    current.members
+                },
+                activeTab = MainTab.TASKS,
+                destination = AppDestination.Main,
+            )
+        }
 
         // Sincroniza virada de semana (rollover + catálogo) antes de observar a semana atual
         dataSource.ensureCurrentWeekAndRollover(house.id)
@@ -331,12 +265,12 @@ class SuaVezStateHolder(
                     .catch { showError("Erro ao sincronizar casa", it) }
                     .collect { house ->
                         if (house == null) {
-                            if (currentHouse != null) {
+                            if (state.currentHouse != null) {
                                 clearHouseForCurrentUser("A casa foi encerrada")
                             }
                             return@collect
                         }
-                        currentHouse = house.toUiHouse()
+                        _uiState.update { it.copy(currentHouse = house.toUiHouse()) }
                         val weekKey = house.semanaAtual.ifBlank { DateCycleUtils.currentIsoWeekKey() }
                         if (weekKey != currentWeekKey || weekAssignmentsJob == null) {
                             currentWeekKey = weekKey
@@ -348,15 +282,19 @@ class SuaVezStateHolder(
                 dataSource.observeMembers(houseId)
                     .catch { showError("Erro ao sincronizar moradores", it) }
                     .collect { remoteMembers ->
-                        members = remoteMembers.map { it.toUiMember() }
+                        _uiState.update { it.copy(members = remoteMembers.map { m -> m.toUiMember() }) }
                     }
             }
             launch {
                 dataSource.observeTasks(houseId)
                     .catch { showError("Erro ao sincronizar tarefas recorrentes", it) }
                     .collect { tasks ->
-                        recurringTasks = tasks.map { it.toUiRecurringTask() }
-                            .sortedBy { it.titulo.lowercase() }
+                        _uiState.update { current ->
+                            current.copy(
+                                recurringTasks = tasks.map { it.toUiRecurringTask() }
+                                    .sortedBy { it.titulo.lowercase() },
+                            )
+                        }
                     }
             }
             restartWeekAssignmentsObserver(houseId, initialWeekKey)
@@ -370,8 +308,12 @@ class SuaVezStateHolder(
                 .catch { showError("Erro ao sincronizar tarefas da semana", it) }
                 .collect { list ->
                     rawAssignments = list
-                    assignments = list.map { item ->
-                        item.toUiAssignment(justClaimedInSession = item.id in claimedInSessionIds)
+                    _uiState.update { current ->
+                        current.copy(
+                            assignments = list.map { item ->
+                                item.toUiAssignment(justClaimedInSession = item.id in claimedInSessionIds)
+                            },
+                        )
                     }
                 }
         }
@@ -387,7 +329,7 @@ class SuaVezStateHolder(
     // --- Tarefas ---
 
     fun toggleTaskDone(assignmentId: String) {
-        val houseId = currentHouse?.id ?: return
+        val houseId = state.currentHouse?.id ?: return
         val target = rawAssignments.firstOrNull { it.id == assignmentId } ?: return
         val newDone = !target.isConcluida()
         scope.launch {
@@ -409,7 +351,7 @@ class SuaVezStateHolder(
     }
 
     private fun undoLastToggle() {
-        val houseId = currentHouse?.id ?: return
+        val houseId = state.currentHouse?.id ?: return
         val id = lastToggledAssignmentId ?: return
         val target = rawAssignments.firstOrNull { it.id == id } ?: return
         lastToggledAssignmentId = null
@@ -420,16 +362,18 @@ class SuaVezStateHolder(
     }
 
     fun claimOpenTask(assignmentId: String) {
-        val houseId = currentHouse?.id ?: return
-        val user = currentUser ?: return
-        val task = assignments.firstOrNull { it.id == assignmentId } ?: return
+        val snapshot = state
+        val houseId = snapshot.currentHouse?.id ?: return
+        val user = snapshot.currentUser ?: return
+        val task = snapshot.assignments.firstOrNull { it.id == assignmentId } ?: return
         claimedInSessionIds.add(assignmentId)
         scope.launch {
             dataSource.claimOpenTask(houseId, assignmentId, user.uid, user.nome)
                 .onSuccess {
-                    val projectedSum = myAssignments.sumOf { it.pontos } +
-                        if (myAssignments.any { it.id == assignmentId }) 0 else task.pontos
-                    val msg = if (projectedSum >= weeklyQuotaPerMember) {
+                    val current = state
+                    val projectedSum = current.myAssignments.sumOf { it.pontos } +
+                        if (current.myAssignments.any { it.id == assignmentId }) 0 else task.pontos
+                    val msg = if (projectedSum >= current.weeklyQuotaPerMember) {
                         "\"${task.titulo}\" adicionada · Você atingiu sua cota!"
                     } else {
                         "\"${task.titulo}\" adicionada às suas tarefas"
@@ -449,8 +393,9 @@ class SuaVezStateHolder(
         points: Int,
         deadline: TaskDeadline,
     ) {
-        val houseId = currentHouse?.id ?: return
-        val uid = currentUser?.uid ?: return
+        val snapshot = state
+        val houseId = snapshot.currentHouse?.id ?: return
+        val uid = snapshot.currentUser?.uid ?: return
         scope.launch {
             dataSource.addWeeklyTask(
                 houseId = houseId,
@@ -473,8 +418,8 @@ class SuaVezStateHolder(
         points: Int,
         deadline: TaskDeadline,
     ) {
-        if (!isAdmin) return
-        val houseId = currentHouse?.id ?: return
+        if (!state.isAdmin) return
+        val houseId = state.currentHouse?.id ?: return
         scope.launch {
             dataSource.updateWeeklyAssignment(
                 houseId = houseId,
@@ -490,8 +435,8 @@ class SuaVezStateHolder(
     }
 
     fun deleteWeeklyAssignment(assignmentId: String) {
-        if (!isAdmin) return
-        val houseId = currentHouse?.id ?: return
+        if (!state.isAdmin) return
+        val houseId = state.currentHouse?.id ?: return
         scope.launch {
             dataSource.deleteAssignment(houseId, assignmentId)
                 .onSuccess { showMessage("Atividade excluída") }
@@ -500,9 +445,10 @@ class SuaVezStateHolder(
     }
 
     fun distributePendingTasks() {
-        if (!isAdmin) return
-        val houseId = currentHouse?.id ?: return
-        if (openAssignments.isEmpty() || members.isEmpty()) {
+        val snapshot = state
+        if (!snapshot.isAdmin) return
+        val houseId = snapshot.currentHouse?.id ?: return
+        if (snapshot.openAssignments.isEmpty() || snapshot.members.isEmpty()) {
             showMessage("Não há tarefas abertas para distribuir")
             return
         }
@@ -522,17 +468,14 @@ class SuaVezStateHolder(
     // --- Preferências ---
 
     fun setPreference(recurringTaskId: String, level: PreferenceLevel) {
-        val houseId = currentHouse?.id ?: return
-        val uid = currentUser?.uid ?: return
+        val snapshot = state
+        val houseId = snapshot.currentHouse?.id ?: return
+        val uid = snapshot.currentUser?.uid ?: return
         scope.launch {
             dataSource.updatePreference(houseId, uid, recurringTaskId, level)
                 .onSuccess { showMessage("Preferência salva") }
                 .onFailure { showError("Erro ao salvar preferência", it) }
         }
-    }
-
-    fun getMyPreference(recurringTaskId: String): PreferenceLevel {
-        return currentMember?.preferences?.get(recurringTaskId) ?: PreferenceLevel.TANTO_FAZ
     }
 
     // --- Casa: tarefas recorrentes e moradores ---
@@ -546,9 +489,10 @@ class SuaVezStateHolder(
         openInCurrentWeek: Boolean = false,
         deadline: TaskDeadline? = null,
     ) {
-        if (!isAdmin) return
-        val houseId = currentHouse?.id ?: return
-        val uid = currentUser?.uid ?: return
+        val snapshot = state
+        if (!snapshot.isAdmin) return
+        val houseId = snapshot.currentHouse?.id ?: return
+        val uid = snapshot.currentUser?.uid ?: return
         val cleanTitle = title.trim()
         scope.launch {
             dataSource.saveRecurringTask(
@@ -573,8 +517,8 @@ class SuaVezStateHolder(
     }
 
     fun deleteRecurringTask(recurringTaskId: String) {
-        if (!isAdmin) return
-        val houseId = currentHouse?.id ?: return
+        if (!state.isAdmin) return
+        val houseId = state.currentHouse?.id ?: return
         scope.launch {
             dataSource.deleteRecurringTask(houseId, recurringTaskId, currentWeekKey)
                 .onSuccess { showMessage("Tarefa recorrente excluída") }
@@ -583,10 +527,11 @@ class SuaVezStateHolder(
     }
 
     fun promoteToAdmin(memberUid: String) {
-        if (!isAdmin) return
-        val houseId = currentHouse?.id ?: return
-        val currentAdminUid = currentUser?.uid ?: return
-        val target = members.firstOrNull { it.uid == memberUid } ?: return
+        val snapshot = state
+        if (!snapshot.isAdmin) return
+        val houseId = snapshot.currentHouse?.id ?: return
+        val currentAdminUid = snapshot.currentUser?.uid ?: return
+        val target = snapshot.members.firstOrNull { it.uid == memberUid } ?: return
         scope.launch {
             dataSource.promoteToAdmin(houseId, currentAdminUid, memberUid)
                 .onSuccess { showMessage("${target.nome} agora é Admin da casa") }
@@ -595,9 +540,10 @@ class SuaVezStateHolder(
     }
 
     fun removeMember(memberUid: String) {
-        if (!isAdmin || memberUid == currentUser?.uid) return
-        val houseId = currentHouse?.id ?: return
-        val target = members.firstOrNull { it.uid == memberUid } ?: return
+        val snapshot = state
+        if (!snapshot.isAdmin || memberUid == snapshot.currentUser?.uid) return
+        val houseId = snapshot.currentHouse?.id ?: return
+        val target = snapshot.members.firstOrNull { it.uid == memberUid } ?: return
         scope.launch {
             dataSource.removeMember(houseId, memberUid)
                 .onSuccess { showMessage("${target.nome} foi removido(a) da casa") }
@@ -608,8 +554,8 @@ class SuaVezStateHolder(
     // --- Perfil / Configurações da Casa ---
 
     fun renameHouse(newName: String) {
-        if (!isAdmin) return
-        val houseId = currentHouse?.id ?: return
+        if (!state.isAdmin) return
+        val houseId = state.currentHouse?.id ?: return
         val clean = newName.trim()
         if (clean.isEmpty()) return
         scope.launch {
@@ -620,8 +566,9 @@ class SuaVezStateHolder(
     }
 
     fun transferAdminAndLeave(newAdminUid: String) {
-        val houseId = currentHouse?.id ?: return
-        val uid = currentUser?.uid ?: return
+        val snapshot = state
+        val houseId = snapshot.currentHouse?.id ?: return
+        val uid = snapshot.currentUser?.uid ?: return
         scope.launch {
             dataSource.transferAdminAndLeave(houseId, uid, newAdminUid)
                 .onSuccess { clearHouseForCurrentUser("Você saiu da casa") }
@@ -630,8 +577,9 @@ class SuaVezStateHolder(
     }
 
     fun leaveHouseAsMember() {
-        val houseId = currentHouse?.id ?: return
-        val uid = currentUser?.uid ?: return
+        val snapshot = state
+        val houseId = snapshot.currentHouse?.id ?: return
+        val uid = snapshot.currentUser?.uid ?: return
         scope.launch {
             dataSource.leaveHouseAsMember(houseId, uid)
                 .onSuccess { clearHouseForCurrentUser("Você saiu da casa") }
@@ -640,8 +588,8 @@ class SuaVezStateHolder(
     }
 
     fun destroyHouse() {
-        if (!isAdmin) return
-        val houseId = currentHouse?.id ?: return
+        if (!state.isAdmin) return
+        val houseId = state.currentHouse?.id ?: return
         scope.launch {
             dataSource.destroyHouse(houseId)
                 .onSuccess { clearHouseForCurrentUser("Casa excluída") }
@@ -651,14 +599,18 @@ class SuaVezStateHolder(
 
     private fun clearHouseForCurrentUser(feedback: String) {
         stopObservingHouse()
-        currentHouse = null
-        members = emptyList()
-        recurringTasks = emptyList()
-        assignments = emptyList()
         rawAssignments = emptyList()
         claimedInSessionIds.clear()
-        activeTab = MainTab.HOUSE
-        destination = AppDestination.NoHouse
+        _uiState.update { current ->
+            current.copy(
+                currentHouse = null,
+                members = emptyList(),
+                recurringTasks = emptyList(),
+                assignments = emptyList(),
+                activeTab = MainTab.HOUSE,
+                destination = AppDestination.NoHouse,
+            )
+        }
         showMessage(feedback)
     }
 
@@ -667,7 +619,7 @@ class SuaVezStateHolder(
     }
 
     fun clearSnackbar() {
-        snackbar = null
+        _uiState.update { it.copy(snackbar = null) }
     }
 
     private fun showError(prefix: String, error: Throwable) {
@@ -680,10 +632,14 @@ class SuaVezStateHolder(
         actionLabel: String? = null,
         onAction: (() -> Unit)? = null,
     ) {
-        snackbar = SnackbarFeedback(
-            message = message,
-            actionLabel = actionLabel,
-            onAction = onAction,
-        )
+        _uiState.update { current ->
+            current.copy(
+                snackbar = SnackbarFeedback(
+                    message = message,
+                    actionLabel = actionLabel,
+                    onAction = onAction,
+                ),
+            )
+        }
     }
 }
