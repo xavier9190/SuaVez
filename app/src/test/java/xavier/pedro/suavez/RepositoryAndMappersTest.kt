@@ -251,4 +251,20 @@ class RepositoryAndMappersTest {
         assertEquals(4, defaultCategories.size)
         assertTrue(defaultCategories.all { it.padrao })
     }
+
+    @Test
+    fun inviteCodeValidationAcceptsNormalizedAndRejectsMalformedCodes() {
+        assertTrue(HouseRepository.isValidInviteCode("SV-7824"))
+        assertTrue(HouseRepository.isValidInviteCode("sv7824"))
+        assertTrue(HouseRepository.isValidInviteCode(" sv-1000 "))
+        assertTrue(HouseRepository.isValidInviteCode("SV4X89"))
+
+        assertFalse(HouseRepository.isValidInviteCode(""))
+        assertFalse(HouseRepository.isValidInviteCode("   "))
+        assertFalse(HouseRepository.isValidInviteCode("123"))
+        assertFalse(HouseRepository.isValidInviteCode("7824"))
+        assertFalse(HouseRepository.isValidInviteCode("SV-12"))
+        assertFalse(HouseRepository.isValidInviteCode("SV-12345"))
+        assertFalse(HouseRepository.isValidInviteCode("ABCD"))
+    }
 }

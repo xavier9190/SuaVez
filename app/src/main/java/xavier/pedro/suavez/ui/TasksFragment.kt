@@ -5,19 +5,28 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
-import androidx.navigation.fragment.findNavController
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.launch
 import xavier.pedro.suavez.R
 import xavier.pedro.suavez.databinding.FragmentTasksBinding
+import xavier.pedro.suavez.ui.state.SuaVezSharedViewModel
 
 class TasksFragment : Fragment() {
 
     private var _binding: FragmentTasksBinding? = null
     private val binding get() = _binding!!
 
+    private val sharedViewModel: SuaVezSharedViewModel by activityViewModels {
+        SuaVezSharedViewModel.Factory
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
-        savedInstanceState: Bundle?
+        savedInstanceState: Bundle?,
     ): View {
         _binding = FragmentTasksBinding.inflate(inflater, container, false)
         return binding.root
@@ -25,9 +34,12 @@ class TasksFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
-        binding.btnCreateTask.setOnClickListener {
-            findNavController().navigate(R.id.action_tasksFragment_to_taskCreateFragment)
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                sharedViewModel.uiState.collect { state ->
+                    binding.tvTasksTitle.text = state.currentHouse?.nome ?: getString(R.string.nav_tasks)
+                }
+            }
         }
     }
 

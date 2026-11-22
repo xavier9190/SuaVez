@@ -1,3 +1,44 @@
 <resources>
     <string name="app_name">SuaVez</string>
+
+    <!-- Marca e navegação -->
+    <string name="brand_prefix">sua&#160;</string>
+    <string name="brand_suffix">vez</string>
+    <string name="nav_tasks">Tarefas</string>
+    <string name="nav_preferences">Preferências</string>
+    <string name="nav_house">Casa</string>
+    <string name="nav_profile">Perfil</string>
+    <string name="cd_open_profile">Abrir perfil</string>
+    <string name="cd_suavez_logo">Logo Sua Vez</string>
+
+    <!-- Login -->
+    <string name="login_test_profiles_overline">PERFIS DE TESTE</string>
+    <string name="login_test_profiles_desc">Escolha um perfil para entrar na casa compartilhada e validar a persistência no Firestore.</string>
+    <string name="login_as_admin">Entrar como Admin</string>
+    <string name="login_as_member">Entrar como Membro</string>
+    <string name="login_loading">Entrando…</string>
+
+    <!-- Sem casa e Criar casa -->
+    <string name="no_house_title">Sua casa</string>
+    <string name="no_house_subtitle">Crie a casa ou entre com um código de convite.</string>
+    <string name="action_create_house">Criar casa</string>
+    <string name="divider_or">ou</string>
+    <string name="label_invite_code">Código de convite</string>
+    <string name="hint_invite_code">Digite o código</string>
+    <string name="action_join_house">Entrar na casa</string>
+    <string name="error_invalid_invite_code">Digite um código válido (ex.: SV-7824)</string>
+
+    <string name="sheet_create_house_title">Criar casa</string>
+    <string name="label_house_name">Nome da casa</string>
+    <string name="hint_house_name">Ex.: Casa dos amigos</string>
+    <string name="error_invalid_house_name">Digite um nome para a casa</string>
+    <string name="action_cancel">Cancelar</string>
+
+    <!-- Placeholders das abas futuras (#20, #22, #23, #24) -->
+    <string name="placeholder_tasks">Aba Tarefas será migrada na próxima etapa.</string>
+    <string name="placeholder_preferences">Aba Preferências será migrada em breve.</string>
+    <string name="placeholder_house_invite">Código de convite: %1$s</string>
+    <string name="placeholder_house">Aba Casa será migrada em breve.</string>
+    <string name="placeholder_profile_subtitle">Configurações completas de perfil serão migradas em breve.</string>
+    <string name="action_sign_out">Sair da conta</string>
 </resources>

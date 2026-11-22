@@ -2,6 +2,8 @@ package xavier.pedro.suavez
 
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -9,6 +11,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -32,17 +36,21 @@ import xavier.pedro.suavez.data.repository.GreedyDecision
 import xavier.pedro.suavez.data.repository.HouseRepository
 import xavier.pedro.suavez.data.repository.RolloverPlan
 import xavier.pedro.suavez.data.repository.SuaVezDataSource
+import xavier.pedro.suavez.ui.MainShellDestination
 import xavier.pedro.suavez.ui.state.AppDestination
 import xavier.pedro.suavez.ui.state.MainTab
 import xavier.pedro.suavez.ui.state.SuaVezAppContainer
 import xavier.pedro.suavez.ui.state.SuaVezSharedViewModel
 import xavier.pedro.suavez.ui.state.SuaVezStateHolder
+import xavier.pedro.suavez.ui.state.SuaVezUiState
 import xavier.pedro.suavez.ui.state.TaskCategory
 import xavier.pedro.suavez.ui.state.TaskDeadline
 import xavier.pedro.suavez.ui.state.TaskFrequency
 import xavier.pedro.suavez.ui.state.TestProfile
 import xavier.pedro.suavez.ui.state.TestProfileSession
+import xavier.pedro.suavez.ui.state.UiUser
 import xavier.pedro.suavez.ui.state.isHouseBalanced
+import xavier.pedro.suavez.ui.toMainShellUiModel
 import java.util.Locale
 
 class SuaVezStateHolderTest {
@@ -384,11 +392,240 @@ class SuaVezStateHolderTest {
             appScope.cancel()
         }
     }
+
+    @Test
+    fun noHouseUserCanJoinExistingHouseByCodeAndHandleInvalidCode() = runBlocking {
+        val fake = FakeSuaVezDataSource(startWithoutHouse = true)
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.signInAs(TestProfile.ADMIN)
+            state.createHouse("Casa Compartilhada")
+            val inviteCode = state.uiState.value.currentHouse?.codigoConvite
+            assertNotNull(inviteCode)
+            state.signOut()
+
+            state.signInAs(TestProfile.MEMBER)
+            assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
+            assertNull(state.uiState.value.currentHouse)
+
+            state.joinHouseByCode("SV-9999")
+            assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
+            assertNull(state.uiState.value.currentHouse)
+            assertTrue(state.uiState.value.snackbar?.message?.contains("Nenhuma casa encontrada") == true)
+
+            val rawNormalizedInput = inviteCode!!.replace("-", "").lowercase(Locale.ROOT)
+            state.joinHouseByCode(rawNormalizedInput)
+            assertEquals(AppDestination.Main, state.uiState.value.destination)
+            assertEquals(MainTab.TASKS, state.uiState.value.activeTab)
+            assertEquals(inviteCode, state.uiState.value.currentHouse?.codigoConvite)
+            assertFalse(state.uiState.value.isAdmin)
+            assertTrue(state.uiState.value.snackbar?.message?.contains("Você entrou na") == true)
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun noHouseProfileTabNavigationAndBackBehavior() = runBlocking {
+        val fake = FakeSuaVezDataSource(startWithoutHouse = true)
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.signInAs(TestProfile.MEMBER)
+            assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
+            assertEquals(MainTab.HOUSE, state.uiState.value.activeTab)
+
+            state.selectTab(MainTab.PROFILE)
+            assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
+            assertEquals(MainTab.PROFILE, state.uiState.value.activeTab)
+
+            assertTrue(state.navigateBack())
+            assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
+            assertEquals(MainTab.HOUSE, state.uiState.value.activeTab)
+
+            assertFalse(state.navigateBack())
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun mainShellUiModelMapsTabsTopBarAndDestinationsCorrectly() = runBlocking {
+        val fake = FakeSuaVezDataSource(startWithoutHouse = true)
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.signInAs(TestProfile.ADMIN)
+
+            val noHouseShell = state.uiState.value.toMainShellUiModel()
+            assertFalse(noHouseShell.hasHouse)
+            assertEquals(listOf(MainTab.HOUSE, MainTab.PROFILE), noHouseShell.visibleTabs)
+            assertEquals(MainTab.HOUSE, noHouseShell.selectedTab)
+            assertEquals(MainShellDestination.NO_HOUSE, noHouseShell.destination)
+            assertTrue(noHouseShell.showTopBar)
+            assertNull(noHouseShell.houseTitle)
+            assertNotNull(noHouseShell.avatarUser)
+
+            state.selectTab(MainTab.PROFILE)
+            val noHouseProfileShell = state.uiState.value.toMainShellUiModel()
+            assertEquals(listOf(MainTab.HOUSE, MainTab.PROFILE), noHouseProfileShell.visibleTabs)
+            assertEquals(MainTab.PROFILE, noHouseProfileShell.selectedTab)
+            assertEquals(MainShellDestination.PROFILE, noHouseProfileShell.destination)
+            assertNull(noHouseProfileShell.avatarUser)
+
+            state.createHouse("Casa dos Amigos")
+            val mainTasksShell = state.uiState.value.toMainShellUiModel()
+            assertTrue(mainTasksShell.hasHouse)
+            assertEquals(
+                listOf(MainTab.TASKS, MainTab.PREFERENCES, MainTab.HOUSE, MainTab.PROFILE),
+                mainTasksShell.visibleTabs,
+            )
+            assertEquals(MainTab.TASKS, mainTasksShell.selectedTab)
+            assertEquals(MainShellDestination.TASKS, mainTasksShell.destination)
+            assertTrue(mainTasksShell.showTopBar)
+            assertEquals("Casa dos Amigos", mainTasksShell.houseTitle)
+            assertNotNull(mainTasksShell.avatarUser)
+
+            state.selectTab(MainTab.PROFILE)
+            val mainProfileShell = state.uiState.value.toMainShellUiModel()
+            assertEquals(MainShellDestination.PROFILE, mainProfileShell.destination)
+            assertNull(mainProfileShell.avatarUser)
+
+            state.openOpenTasks()
+            val openTasksShell = state.uiState.value.toMainShellUiModel()
+            assertEquals(MainShellDestination.OPEN_TASKS, openTasksShell.destination)
+            assertEquals(MainTab.TASKS, openTasksShell.selectedTab)
+            assertFalse(openTasksShell.showTopBar)
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun signInAsClearsPriorLoginErrorSnackbarOnSubsequentSuccess() = runBlocking {
+        val fake = FakeSuaVezDataSource()
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            fake.nextSignInError = IllegalStateException("Falha simulada de rede")
+            state.signInAs(TestProfile.ADMIN)
+            assertNull(state.uiState.value.currentUser)
+            assertTrue(state.uiState.value.snackbar?.message?.contains("Erro ao entrar") == true)
+
+            state.signInAs(TestProfile.ADMIN)
+            assertNotNull(state.uiState.value.currentUser)
+            assertNull(state.uiState.value.snackbar)
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun signOutClearsActiveSnackbar() = runBlocking {
+        val fake = FakeSuaVezDataSource()
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.signInAs(TestProfile.ADMIN)
+            state.addWeeklyTask("Lavar louça", TaskCategory.LIMPEZA, 5, TaskDeadline.HOJE)
+            val openTask = state.uiState.value.openAssignments.single()
+            state.claimOpenTask(openTask.id)
+            state.toggleTaskDone(openTask.id)
+            assertNotNull(state.uiState.value.snackbar)
+
+            state.signOut()
+            assertNull(state.uiState.value.currentUser)
+            assertNull(state.uiState.value.snackbar)
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun mainShellUiModelGuardsOpenTasksWithoutHouse() {
+        val uiState = SuaVezUiState(
+            currentUser = UiUser(uid = "u_1", nome = "Ana", email = "ana@suavez.app"),
+            currentHouse = null,
+            activeTab = MainTab.TASKS,
+            destination = AppDestination.OpenTasks,
+        )
+
+        val shell = uiState.toMainShellUiModel()
+
+        assertFalse(shell.hasHouse)
+        assertEquals(MainTab.HOUSE, shell.selectedTab)
+        assertEquals(MainShellDestination.NO_HOUSE, shell.destination)
+        assertTrue(shell.showTopBar)
+    }
+
+    @Test
+    fun startSignInCompletesRolloverAndStartsObservingHouseWhenLoginScopeIsCancelled() = runBlocking {
+        val fake = FakeSuaVezDataSource()
+        fake.addWeeklyTask(
+            houseId = HouseRepository.DEFAULT_TEST_HOUSE_ID,
+            title = "Limpar cozinha",
+            category = TaskCategory.LIMPEZA,
+            points = 5,
+            deadline = TaskDeadline.HOJE,
+            createdByUid = TestProfile.ADMIN.uid,
+            semana = DateCycleUtils.currentIsoWeekKey(),
+        )
+        val rolloverStarted = CompletableDeferred<Unit>()
+        val rolloverRelease = CompletableDeferred<Unit>()
+        fake.rolloverStarted = rolloverStarted
+        fake.rolloverRelease = rolloverRelease
+
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val container = SuaVezAppContainer(dataSource = fake, appScope = appScope)
+        val factory = SuaVezSharedViewModel.factory { container }
+        val loginStore = ViewModelStore()
+        val mainStore = ViewModelStore()
+        val loginActivityScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val loginVm = ViewModelProvider(loginStore, factory)[SuaVezSharedViewModel::class.java]
+            val mainVm = ViewModelProvider(mainStore, factory)[SuaVezSharedViewModel::class.java]
+
+            // Simula LoginActivity observando currentUser != null e chamando finish() imediatamente
+            loginActivityScope.launch {
+                loginVm.uiState.collect { state ->
+                    if (state.currentUser != null) {
+                        loginStore.clear()
+                        loginActivityScope.cancel()
+                    }
+                }
+            }
+
+            loginVm.stateHolder.startSignIn(TestProfile.ADMIN)
+            rolloverStarted.await()
+
+            assertNotNull(mainVm.uiState.value.currentUser)
+            assertFalse(loginVm.viewModelScope.isActive)
+            assertFalse(fake.ensureCurrentWeekCompleted)
+            assertTrue(mainVm.uiState.value.assignments.isEmpty())
+
+            rolloverRelease.complete(Unit)
+
+            assertTrue(fake.ensureCurrentWeekCompleted)
+            assertFalse(mainVm.uiState.value.isAuthenticating)
+            assertNull(mainVm.uiState.value.snackbar)
+            assertEquals(listOf("Limpar cozinha"), mainVm.uiState.value.assignments.map { it.titulo })
+        } finally {
+            loginActivityScope.cancel()
+            loginStore.clear()
+            mainStore.clear()
+            appScope.cancel()
+        }
+    }
 }
 
 private class FakeSuaVezDataSource(
     startWithoutHouse: Boolean = false,
 ) : SuaVezDataSource {
+    var nextSignInError: Throwable? = null
+    var rolloverStarted: CompletableDeferred<Unit>? = null
+    var rolloverRelease: CompletableDeferred<Unit>? = null
+    var ensureCurrentWeekCompleted: Boolean = false
     private var idSeq = 1
     private val monthKey = DateCycleUtils.currentMonthKey()
     private val weekKey = DateCycleUtils.currentIsoWeekKey()
@@ -444,6 +681,10 @@ private class FakeSuaVezDataSource(
 
     override suspend fun loadOrBootstrapTestProfile(profile: TestProfile): Result<TestProfileSession> =
         runCatching {
+            nextSignInError?.let { error ->
+                nextSignInError = null
+                throw error
+            }
             val user = users.getOrPut(profile.uid) {
                 User(uid = profile.uid, nome = profile.nome, email = profile.email, currentHouseId = null)
             }
@@ -657,8 +898,12 @@ private class FakeSuaVezDataSource(
             )
     }
 
-    override suspend fun ensureCurrentWeekAndRollover(houseId: String): Result<RolloverPlan?> =
-        Result.success(null)
+    override suspend fun ensureCurrentWeekAndRollover(houseId: String): Result<RolloverPlan?> {
+        rolloverStarted?.complete(Unit)
+        rolloverRelease?.await()
+        ensureCurrentWeekCompleted = true
+        return Result.success(null)
+    }
 
     override suspend fun addWeeklyTask(
         houseId: String,

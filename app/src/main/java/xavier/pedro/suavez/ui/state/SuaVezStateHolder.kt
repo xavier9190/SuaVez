@@ -144,8 +144,15 @@ class SuaVezStateHolder(
 
     // --- Autenticação (perfis padrão de teste) ---
 
+    fun startSignIn(profile: TestProfile) {
+        if (_uiState.value.isAuthenticating) return
+        scope.launch {
+            signInAs(profile)
+        }
+    }
+
     suspend fun signInAs(profile: TestProfile) {
-        _uiState.update { it.copy(isAuthenticating = true) }
+        _uiState.update { it.copy(isAuthenticating = true, snackbar = null) }
         try {
             dataSource.loadOrBootstrapTestProfile(profile)
                 .onSuccess { session ->
@@ -163,6 +170,7 @@ class SuaVezStateHolder(
                                 assignments = emptyList(),
                                 activeTab = MainTab.HOUSE,
                                 destination = AppDestination.NoHouse,
+                                snackbar = null,
                             )
                         }
                     } else {
@@ -171,6 +179,7 @@ class SuaVezStateHolder(
                                 currentUser = session.user.toUiUser(),
                                 recurringTasks = emptyList(),
                                 assignments = emptyList(),
+                                snackbar = null,
                             )
                         }
                         enterHouseSession(house, session.members)
@@ -192,11 +201,12 @@ class SuaVezStateHolder(
             current.copy(
                 currentUser = null,
                 currentHouse = null,
-                                members = emptyList(),
+                members = emptyList(),
                 recurringTasks = emptyList(),
                 assignments = emptyList(),
                 activeTab = MainTab.TASKS,
                 destination = AppDestination.Login,
+                snackbar = null,
             )
         }
     }

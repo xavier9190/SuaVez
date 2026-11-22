@@ -444,6 +444,7 @@ class HouseRepository(
         const val DEFAULT_TEST_HOUSE_ID = "house_suavez_teste"
         const val DEFAULT_TEST_HOUSE_NAME = "Casa Sua Vez (Teste)"
         const val DEFAULT_TEST_INVITE_CODE = "SV-1000"
+        private val INVITE_CODE_REGEX = Regex("^SV-[A-Z0-9]{4}$")
 
         fun formatInviteCode(suffix: Int): String =
             String.format(Locale.US, "SV-%04d", suffix.coerceIn(0, 9999))
@@ -457,5 +458,8 @@ class HouseRepository(
                 trimmed
             }
         }
+
+        fun isValidInviteCode(raw: String): Boolean =
+            INVITE_CODE_REGEX.matches(normalizeInviteCode(raw))
     }
 }
