@@ -34,8 +34,86 @@
     <string name="error_invalid_house_name">Digite um nome para a casa</string>
     <string name="action_cancel">Cancelar</string>
 
-    <!-- Placeholders das abas futuras (#20, #22, #23, #24) -->
-    <string name="placeholder_tasks">Aba Tarefas será migrada na próxima etapa.</string>
+    <!-- Aba Tarefas (#20) -->
+    <string name="tasks_greeting">Bom dia, %1$s</string>
+    <string name="tasks_week_meta_singular">Semana %1$d · 1 morador</string>
+    <string name="tasks_week_meta_plural">Semana %1$d · %2$d moradores</string>
+    <string name="action_create_activity">Criar atividade</string>
+    <string name="cd_create_activity">Criar atividade</string>
+
+    <string name="tasks_quota_overline">SUA COTA DA SEMANA</string>
+    <string name="tasks_quota_pending_pts">%1$d pts pendentes</string>
+    <string name="tasks_quota_completed">Cota concluída</string>
+    <string name="tasks_quota_points_suffix">&#160;&#160;de %1$d pts feitos</string>
+    <string name="tasks_legend_done">Feitos</string>
+    <string name="tasks_legend_pending">Pendentes</string>
+
+    <string name="tasks_my_section_title">Suas tarefas da semana</string>
+    <string name="tasks_pending_one">1 pendente</string>
+    <string name="tasks_pending_many">%1$d pendentes</string>
+    <string name="tasks_badge_sua_vez">Sua vez</string>
+    <string name="tasks_effort_pt_singular">%1$d pt</string>
+    <string name="tasks_effort_pts_plural">%1$d pts</string>
+    <string name="cd_toggle_task">Concluir %1$s</string>
+
+    <string name="tasks_empty_title">Tudo em dia por aqui</string>
+    <string name="tasks_empty_subtitle">Você ainda não pegou nenhuma tarefa nesta semana.</string>
+    <string name="action_view_open_tasks">Ver tarefas abertas</string>
+    <string name="open_tasks_coming_soon">Tela de tarefas abertas será liberada na próxima etapa.</string>
+
+    <string name="tasks_rhythm_title">Ritmo da casa</string>
+    <string name="tasks_rhythm_subtitle">Semana coletiva · %1$s</string>
+    <string name="tasks_rhythm_pct">%1$d%%</string>
+    <string name="tasks_rhythm_done_summary">%1$d de %2$d tarefas feitas</string>
+    <string name="tasks_rhythm_remaining">Faltam %1$d para fechar 100%% até domingo.</string>
+    <string name="tasks_rhythm_all_done">Casa 100%% em dia nesta semana!</string>
+    <string name="tasks_rhythm_tagline">Todo mundo no ritmo 👏</string>
+    <string name="tasks_open_preview_title">Tarefas abertas</string>
+    <string name="tasks_open_preview_subtitle">Ninguém pegou ainda</string>
+    <string name="tasks_open_preview_empty">Todas as tarefas desta semana já foram escolhidas.</string>
+    <string name="tasks_open_preview_extra_one">+1 tarefa</string>
+    <string name="tasks_open_preview_extra_many">+%1$d tarefas</string>
+
+    <!-- BottomSheet de atividade (#20) -->
+    <string name="sheet_activity_create_title">Criar atividade</string>
+    <string name="sheet_activity_edit_title">Editar atividade</string>
+    <string name="sheet_activity_edit_recurring_title">Editar tarefa recorrente</string>
+    <string name="sheet_activity_badge_unique">Única</string>
+    <string name="sheet_activity_badge_recurring">Recorrente</string>
+
+    <string name="label_activity_title">Nome</string>
+    <string name="hint_activity_title_unique">Ex.: Limpar a geladeira</string>
+    <string name="hint_activity_title_recurring">Ex.: Lavar banheiro</string>
+    <string name="label_activity_category">Categoria</string>
+    <string name="label_activity_effort">Esforço</string>
+    <string name="label_activity_recurrence">Recorrência</string>
+    <string name="label_activity_frequency">Frequência</string>
+    <string name="label_activity_open_now">Abrir atividade na semana atual?</string>
+    <string name="label_activity_deadline">Prazo</string>
+
+    <string name="option_recurrence_unique">Única (esta semana)</string>
+    <string name="option_recurrence_recurring">Recorrente</string>
+    <string name="option_open_now_yes">Já abrir agora</string>
+    <string name="option_open_now_no">Deixar para a próxima semana</string>
+
+    <string name="error_activity_title">Digite o nome da atividade</string>
+    <string name="error_activity_category">Selecione uma categoria</string>
+    <string name="error_activity_effort">Selecione o nível de esforço</string>
+    <string name="error_activity_recurrence">Selecione o tipo da atividade</string>
+    <string name="error_activity_frequency">Selecione a frequência</string>
+    <string name="error_activity_open_now">Escolha se deseja abrir na semana atual</string>
+    <string name="error_activity_deadline">Selecione um prazo</string>
+
+    <string name="action_save_changes">Salvar alterações</string>
+    <string name="action_delete_activity">Excluir atividade</string>
+    <string name="action_delete_recurring_task">Excluir tarefa recorrente</string>
+    <string name="dialog_delete_activity_title">Excluir atividade?</string>
+    <string name="dialog_delete_activity_message">A atividade \"%1$s\" será removida das tarefas desta semana.</string>
+    <string name="dialog_delete_recurring_title">Excluir tarefa recorrente?</string>
+    <string name="dialog_delete_recurring_message">A tarefa \"%1$s\" deixará de entrar nos próximos ciclos e no cálculo da cota.</string>
+    <string name="action_confirm_delete">Excluir</string>
+
+    <!-- Placeholders das abas futuras (#22, #23, #24) -->
     <string name="placeholder_preferences">Aba Preferências será migrada em breve.</string>
     <string name="placeholder_house_invite">Código de convite: %1$s</string>
     <string name="placeholder_house">Aba Casa será migrada em breve.</string>

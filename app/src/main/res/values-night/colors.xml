@@ -16,6 +16,9 @@
     <color name="linha">#243945</color>
     <color name="parede">#0E1A22</color>
     <color name="superficie">#15252F</color>
+    <color name="ring_track">#56411B</color>
+    <color name="checkbox_border">#3E5964</color>
+    <color name="dashed_border">#2E4D59</color>
 
     <!-- Esforço e preferência -->
     <color name="pref_odeio">#E2574C</color>
