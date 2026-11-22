@@ -2,17 +2,21 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:id="@+id/tasksFragment"
-        android:title="Tarefas" />
+        android:icon="@drawable/ic_nav_tasks"
+        android:title="@string/nav_tasks" />
 
     <item
         android:id="@+id/preferencesFragment"
-        android:title="Preferências" />
+        android:icon="@drawable/ic_nav_preferences"
+        android:title="@string/nav_preferences" />
 
     <item
-        android:id="@+id/scoreboardFragment"
-        android:title="Placar" />
+        android:id="@+id/houseFragment"
+        android:icon="@drawable/ic_nav_house"
+        android:title="@string/nav_house" />
 
     <item
-        android:id="@+id/roommatesFragment"
-        android:title="Moradores" />
+        android:id="@+id/profileFragment"
+        android:icon="@drawable/ic_nav_profile"
+        android:title="@string/nav_profile" />
 </menu>
