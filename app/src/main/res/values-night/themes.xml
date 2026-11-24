@@ -1,22 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="Theme.SuaVez" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/verde_casa</item>
-        <item name="colorPrimaryVariant">@color/verde_fundo</item>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.SuaVez" parent="Base.Theme.SuaVez">
         <item name="colorOnPrimary">@color/parede</item>
-        <item name="colorPrimaryContainer">@color/nevoa</item>
-        <item name="colorOnPrimaryContainer">@color/verde_fundo</item>
-        <item name="colorSecondary">@color/ambar_vez</item>
-        <item name="colorOnSecondary">@color/tinta</item>
-        <item name="colorSurface">@color/superficie</item>
-        <item name="colorOnSurface">@color/tinta</item>
-        <item name="colorOutline">@color/linha</item>
-        <item name="colorError">@color/pref_odeio</item>
-        <item name="android:colorBackground">@color/parede</item>
-        <item name="android:windowBackground">@color/parede</item>
-        <item name="android:statusBarColor">@color/parede</item>
-        <item name="android:navigationBarColor">@color/superficie</item>
+        <item name="colorOnSecondary">@color/parede</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="bottomSheetDialogTheme">@style/ThemeOverlay.SuaVez.BottomSheetDialog</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
     </style>
 </resources>
