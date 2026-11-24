@@ -173,9 +173,32 @@
     <string name="house_recurring_meta">%1$s · %2$s</string>
     <string name="cd_edit_recurring_task">Editar %1$s</string>
 
-    <!-- Placeholders das abas futuras (#24) -->
-    <string name="placeholder_profile_subtitle">Configurações completas de perfil serão migradas em breve.</string>
+    <!-- Aba Perfil (#24) -->
+    <string name="profile_name_overline">Nome</string>
+    <string name="profile_house_overline">Nome da casa</string>
+    <string name="profile_role_admin">Admin</string>
+    <string name="action_rename_house">Renomear casa</string>
+    <string name="action_leave_house">Sair da casa</string>
+    <string name="action_destroy_house">Destruir casa</string>
     <string name="action_sign_out">Sair da conta</string>
+    <string name="action_save">Salvar</string>
+    <string name="action_close">Fechar</string>
+    <string name="action_transfer_and_leave">Transferir e sair</string>
+    <string name="action_confirm_destroy">Destruir</string>
+
+    <string name="dialog_rename_house_title">Renomear casa</string>
+    <string name="label_new_house_name">Novo nome</string>
+    <string name="error_invalid_rename_house">Digite um nome válido</string>
+
+    <string name="dialog_transfer_admin_title">Transferir administração</string>
+    <string name="dialog_transfer_admin_message">Escolha quem será o novo admin antes de sair da casa:</string>
+    <string name="dialog_transfer_admin_only_member">Você é o único morador da casa. Para encerrá-la, use \"Destruir casa\".</string>
+
+    <string name="dialog_leave_house_title">Sair da casa?</string>
+    <string name="dialog_leave_house_message">Você deixará de fazer parte da casa \"%1$s\".</string>
+
+    <string name="dialog_destroy_house_title">Destruir casa?</string>
+    <string name="dialog_destroy_house_message">Essa ação apaga todas as tarefas, preferências e histórico da casa. Digite \"%1$s\" para confirmar.</string>
     <!-- Open Tasks Fragment -->
     <string name="open_tasks_title">Tarefas abertas</string>
     <string name="open_tasks_subtitle">Tarefas avulsas desta semana. Quem pegar soma os pontos; o que sobrar entra no sorteio justo.</string>

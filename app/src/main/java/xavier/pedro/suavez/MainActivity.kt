@@ -1,7 +1,6 @@
 package xavier.pedro.suavez
 
 import android.content.Intent
-import android.content.res.ColorStateList
 import android.os.Bundle
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
@@ -23,11 +22,10 @@ import kotlinx.coroutines.launch
 import xavier.pedro.suavez.databinding.ActivityMainBinding
 import xavier.pedro.suavez.ui.MainShellDestination
 import xavier.pedro.suavez.ui.MainShellUiModel
+import xavier.pedro.suavez.ui.bindSuaVezAvatar
 import xavier.pedro.suavez.ui.state.MainTab
 import xavier.pedro.suavez.ui.state.SnackbarFeedback
 import xavier.pedro.suavez.ui.state.SuaVezSharedViewModel
-import xavier.pedro.suavez.ui.state.avatarIndexFor
-import xavier.pedro.suavez.ui.state.initialsOf
 import xavier.pedro.suavez.ui.toMainShellUiModel
 
 class MainActivity : AppCompatActivity() {
@@ -151,12 +149,7 @@ class MainActivity : AppCompatActivity() {
         val avatarUser = shell.avatarUser
         binding.tvTopAvatar.isVisible = avatarUser != null
         if (avatarUser != null) {
-            binding.tvTopAvatar.text = initialsOf(avatarUser.nome)
-            val colorRes = AVATAR_COLORS[avatarIndexFor(avatarUser.uid)]
-            ViewCompat.setBackgroundTintList(
-                binding.tvTopAvatar,
-                ColorStateList.valueOf(ContextCompat.getColor(this, colorRes)),
-            )
+            binding.tvTopAvatar.bindSuaVezAvatar(avatarUser.nome, avatarUser.uid)
         }
     }
 
@@ -274,14 +267,5 @@ class MainActivity : AppCompatActivity() {
         }
         startActivity(intent)
         finish()
-    }
-
-    private companion object {
-        val AVATAR_COLORS = intArrayOf(
-            R.color.avatar_1,
-            R.color.avatar_2,
-            R.color.avatar_3,
-            R.color.avatar_4,
-        )
     }
 }
