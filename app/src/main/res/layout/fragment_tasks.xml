@@ -272,6 +272,7 @@
             android:gravity="center"
             android:minHeight="48dp"
             android:orientation="horizontal"
+            android:layout_marginTop="10dp"
             android:paddingStart="16dp"
             android:paddingEnd="16dp">
 
