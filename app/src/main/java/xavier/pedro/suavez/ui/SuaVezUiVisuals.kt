@@ -3,9 +3,14 @@ package xavier.pedro.suavez.ui
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.drawable.GradientDrawable
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
+import androidx.core.view.isVisible
+import coil.dispose
+import coil.load
+import coil.transform.CircleCropTransformation
 import xavier.pedro.suavez.R
 import xavier.pedro.suavez.data.model.TaskWeightLevel
 import xavier.pedro.suavez.ui.state.TaskIconHint
@@ -33,6 +38,40 @@ internal fun TextView.bindSuaVezAvatar(name: String, idForColor: String) {
     background = GradientDrawable().apply {
         shape = GradientDrawable.OVAL
         setColor(ContextCompat.getColor(context, AVATAR_COLORS[avatarIndexFor(idForColor)]))
+    }
+}
+
+internal fun bindSuaVezAvatar(
+    photoView: ImageView,
+    initialsView: TextView,
+    name: String,
+    idForColor: String,
+    fotoUrl: String?,
+) {
+    initialsView.bindSuaVezAvatar(name, idForColor)
+    val cleanUrl = fotoUrl?.trim()?.takeIf { it.isNotEmpty() }
+    if (cleanUrl == null) {
+        photoView.tag = null
+        photoView.dispose()
+        photoView.setImageDrawable(null)
+        photoView.isVisible = false
+        return
+    }
+    if (photoView.tag == cleanUrl && photoView.drawable != null) {
+        photoView.isVisible = true
+        return
+    }
+    photoView.tag = cleanUrl
+    photoView.isVisible = false
+    photoView.load(cleanUrl) {
+        transformations(CircleCropTransformation())
+        listener(
+            onSuccess = { _, _ -> photoView.isVisible = true },
+            onError = { _, _ ->
+                photoView.tag = null
+                photoView.isVisible = false
+            },
+        )
     }
 }
 

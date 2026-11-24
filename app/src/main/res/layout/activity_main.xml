@@ -70,19 +70,33 @@
             android:layout_height="0dp"
             android:layout_weight="1" />
 
-        <TextView
-            android:id="@+id/tv_top_avatar"
+        <FrameLayout
+            android:id="@+id/fl_top_avatar"
             android:layout_width="36dp"
             android:layout_height="36dp"
-            android:background="@drawable/bg_avatar_circle"
             android:clickable="true"
             android:contentDescription="@string/cd_open_profile"
             android:focusable="true"
-            android:fontFamily="sans-serif-medium"
-            android:foreground="?attr/selectableItemBackgroundBorderless"
-            android:gravity="center"
-            android:textColor="@color/verde_fundo"
-            android:textSize="14sp" />
+            android:foreground="?attr/selectableItemBackgroundBorderless">
+
+            <TextView
+                android:id="@+id/tv_top_avatar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_avatar_circle"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center"
+                android:textColor="@color/verde_fundo"
+                android:textSize="14sp" />
+
+            <ImageView
+                android:id="@+id/iv_top_avatar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@null"
+                android:scaleType="centerCrop"
+                android:visibility="gone" />
+        </FrameLayout>
     </LinearLayout>
 
     <androidx.coordinatorlayout.widget.CoordinatorLayout

@@ -46,12 +46,17 @@ import xavier.pedro.suavez.ui.state.SuaVezUiState
 import xavier.pedro.suavez.ui.state.TaskCategory
 import xavier.pedro.suavez.ui.state.TaskDeadline
 import xavier.pedro.suavez.ui.state.TaskFrequency
-import xavier.pedro.suavez.ui.state.TestProfile
-import xavier.pedro.suavez.ui.state.TestProfileSession
+import xavier.pedro.suavez.data.repository.AuthSession
 import xavier.pedro.suavez.ui.state.UiUser
 import xavier.pedro.suavez.ui.state.isHouseBalanced
 import xavier.pedro.suavez.ui.toMainShellUiModel
 import java.util.Locale
+
+private const val ADMIN_UID = "u_admin"
+private const val MEMBER_UID = "u_membro"
+private const val ADMIN_TOKEN = "token_admin"
+private const val MEMBER_TOKEN = "token_member"
+private const val TEST_HOUSE_ID = "house_test"
 
 class SuaVezStateHolderTest {
 
@@ -63,10 +68,10 @@ class SuaVezStateHolderTest {
         try {
             assertEquals(AppDestination.Login, state.uiState.value.destination)
 
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
             assertEquals(AppDestination.Main, state.uiState.value.destination)
             assertEquals(MainTab.TASKS, state.uiState.value.activeTab)
-            assertEquals(TestProfile.ADMIN.uid, state.uiState.value.currentUser?.uid)
+            assertEquals(ADMIN_UID, state.uiState.value.currentUser?.uid)
             assertTrue(state.uiState.value.isAdmin)
             // Sem tarefas mockadas iniciais
             assertTrue(state.uiState.value.recurringTasks.isEmpty())
@@ -88,9 +93,9 @@ class SuaVezStateHolderTest {
             assertEquals(AppDestination.Login, state.uiState.value.destination)
             assertNull(state.uiState.value.currentUser)
 
-            state.signInAs(TestProfile.MEMBER)
+            state.signInWithGoogleIdToken(MEMBER_TOKEN)
             assertEquals(AppDestination.Main, state.uiState.value.destination)
-            assertEquals(TestProfile.MEMBER.uid, state.uiState.value.currentUser?.uid)
+            assertEquals(MEMBER_UID, state.uiState.value.currentUser?.uid)
             assertFalse(state.uiState.value.isAdmin)
         } finally {
             testScope.cancel()
@@ -103,7 +108,7 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            state.signInAs(TestProfile.MEMBER)
+            state.signInWithGoogleIdToken(MEMBER_TOKEN)
 
             assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
             assertEquals(MainTab.HOUSE, state.uiState.value.activeTab)
@@ -131,7 +136,7 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
 
             state.addWeeklyTask("Lavar louça", TaskCategory.LIMPEZA, 5, TaskDeadline.HOJE)
             val openTask = state.uiState.value.openAssignments.single()
@@ -145,13 +150,13 @@ class SuaVezStateHolderTest {
 
             assertEquals(5, state.uiState.value.myDonePoints)
             assertEquals(0, state.uiState.value.myPendingCount)
-            assertEquals(5, state.uiState.value.memberWeeklyPoints(TestProfile.ADMIN.uid))
+            assertEquals(5, state.uiState.value.memberWeeklyPoints(ADMIN_UID))
             assertEquals("Desfazer", state.uiState.value.snackbar?.actionLabel)
 
             state.uiState.value.snackbar?.onAction?.invoke()
             assertEquals(0, state.uiState.value.myDonePoints)
             assertEquals(1, state.uiState.value.myPendingCount)
-            assertEquals(0, state.uiState.value.memberWeeklyPoints(TestProfile.ADMIN.uid))
+            assertEquals(0, state.uiState.value.memberWeeklyPoints(ADMIN_UID))
         } finally {
             testScope.cancel()
         }
@@ -163,7 +168,7 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
 
             state.saveRecurringTask(
                 editingId = null,
@@ -184,7 +189,7 @@ class SuaVezStateHolderTest {
             assertEquals(0, state.uiState.value.openAssignments.size)
 
             val bathroomAssignment = state.uiState.value.assignments.first { it.recurringTaskId == recurringId }
-            assertEquals(TestProfile.MEMBER.uid, bathroomAssignment.assigneeUid)
+            assertEquals(MEMBER_UID, bathroomAssignment.assigneeUid)
         } finally {
             testScope.cancel()
         }
@@ -196,7 +201,7 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            state.signInAs(TestProfile.MEMBER)
+            state.signInWithGoogleIdToken(MEMBER_TOKEN)
 
             assertFalse(state.uiState.value.isAdmin)
             state.saveRecurringTask(null, "Teste", TaskCategory.OUTRAS, 2, TaskFrequency.SEMANAL)
@@ -218,7 +223,7 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
 
             state.saveRecurringTask(
                 editingId = null,
@@ -275,7 +280,7 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
             state.saveRecurringTask(null, "Lavar louça", TaskCategory.LIMPEZA, 3, TaskFrequency.DIARIA)
 
             val taskId = state.uiState.value.recurringTasks.single().id
@@ -299,7 +304,7 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
             state.renameHouse("Casa Nova")
             assertEquals("Casa Nova", state.uiState.value.currentHouse?.nome)
 
@@ -310,7 +315,7 @@ class SuaVezStateHolderTest {
             assertNull(state.uiState.value.currentHouse)
 
             // Membro agora é admin e pode destruir a casa
-            state.signInAs(TestProfile.MEMBER)
+            state.signInWithGoogleIdToken(MEMBER_TOKEN)
             assertTrue(state.uiState.value.isAdmin)
             state.destroyHouse()
             assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
@@ -326,7 +331,7 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
             state.addWeeklyTask("Lavar varanda", TaskCategory.LIMPEZA, 5, TaskDeadline.SABADO)
             val created = state.uiState.value.openAssignments.first { it.titulo == "Lavar varanda" }
 
@@ -345,7 +350,7 @@ class SuaVezStateHolderTest {
 
             // Membro comum não pode editar nem excluir tarefa aberta
             state.signOut()
-            state.signInAs(TestProfile.MEMBER)
+            state.signInWithGoogleIdToken(MEMBER_TOKEN)
             assertFalse(state.uiState.value.isAdmin)
             state.updateWeeklyAssignment(created.id, "Hackeado", TaskCategory.LIMPEZA, 2, TaskDeadline.DOMINGO)
             state.deleteWeeklyAssignment(created.id)
@@ -353,7 +358,7 @@ class SuaVezStateHolderTest {
 
             // Admin consegue excluir a tarefa aberta
             state.signOut()
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
             state.deleteWeeklyAssignment(created.id)
             assertFalse(state.uiState.value.openAssignments.any { it.id == created.id })
             assertEquals("Atividade excluída", state.uiState.value.snackbar?.message)
@@ -378,7 +383,7 @@ class SuaVezStateHolderTest {
             assertSame(loginVm.stateHolder, mainVm.stateHolder)
             assertSame(loginVm.uiState, mainVm.uiState)
 
-            loginVm.stateHolder.signInAs(TestProfile.ADMIN)
+            loginVm.stateHolder.signInWithGoogleIdToken(ADMIN_TOKEN)
             assertEquals(AppDestination.Main, mainVm.uiState.value.destination)
 
             // Simula LoginActivity.finish() limpando seu ViewModelStore: observadores continuam ativos
@@ -399,13 +404,13 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
             state.createHouse("Casa Compartilhada")
             val inviteCode = state.uiState.value.currentHouse?.codigoConvite
             assertNotNull(inviteCode)
             state.signOut()
 
-            state.signInAs(TestProfile.MEMBER)
+            state.signInWithGoogleIdToken(MEMBER_TOKEN)
             assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
             assertNull(state.uiState.value.currentHouse)
 
@@ -432,7 +437,7 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            state.signInAs(TestProfile.MEMBER)
+            state.signInWithGoogleIdToken(MEMBER_TOKEN)
             assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
             assertEquals(MainTab.HOUSE, state.uiState.value.activeTab)
 
@@ -456,7 +461,7 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
 
             val noHouseShell = state.uiState.value.toMainShellUiModel()
             assertFalse(noHouseShell.hasHouse)
@@ -509,11 +514,11 @@ class SuaVezStateHolderTest {
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
             fake.nextSignInError = IllegalStateException("Falha simulada de rede")
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
             assertNull(state.uiState.value.currentUser)
             assertTrue(state.uiState.value.snackbar?.message?.contains("Erro ao entrar") == true)
 
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
             assertNotNull(state.uiState.value.currentUser)
             assertNull(state.uiState.value.snackbar)
         } finally {
@@ -527,7 +532,7 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
             state.addWeeklyTask("Lavar louça", TaskCategory.LIMPEZA, 5, TaskDeadline.HOJE)
             val openTask = state.uiState.value.openAssignments.single()
             state.claimOpenTask(openTask.id)
@@ -563,12 +568,12 @@ class SuaVezStateHolderTest {
     fun startSignInCompletesRolloverAndStartsObservingHouseWhenLoginScopeIsCancelled() = runBlocking {
         val fake = FakeSuaVezDataSource()
         fake.addWeeklyTask(
-            houseId = HouseRepository.DEFAULT_TEST_HOUSE_ID,
+            houseId = TEST_HOUSE_ID,
             title = "Limpar cozinha",
             category = TaskCategory.LIMPEZA,
             points = 5,
             deadline = TaskDeadline.HOJE,
-            createdByUid = TestProfile.ADMIN.uid,
+            createdByUid = ADMIN_UID,
             semana = DateCycleUtils.currentIsoWeekKey(),
         )
         val rolloverStarted = CompletableDeferred<Unit>()
@@ -596,7 +601,7 @@ class SuaVezStateHolderTest {
                 }
             }
 
-            loginVm.stateHolder.startSignIn(TestProfile.ADMIN)
+            loginVm.stateHolder.startGoogleSignIn(ADMIN_TOKEN)
             rolloverStarted.await()
 
             assertNotNull(mainVm.uiState.value.currentUser)
@@ -624,7 +629,7 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
             state.saveRecurringTask(null, "Lavar banheiro", TaskCategory.LIMPEZA, 8, TaskFrequency.SEMANAL)
             val taskId = state.uiState.value.recurringTasks.single().id
             state.clearSnackbar()
@@ -665,7 +670,7 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
             val originalName = state.uiState.value.currentHouse?.nome
 
             // Nome com menos de 2 caracteres não dispara alteração
@@ -682,7 +687,7 @@ class SuaVezStateHolderTest {
             assertNotNull(state.uiState.value.currentHouse)
 
             // Transferir para si mesmo ou UID inexistente é ignorado
-            state.transferAdminAndLeave(TestProfile.ADMIN.uid)
+            state.transferAdminAndLeave(ADMIN_UID)
             assertNotNull(state.uiState.value.currentHouse)
             state.transferAdminAndLeave("uid_inexistente")
             assertNotNull(state.uiState.value.currentHouse)
@@ -694,7 +699,7 @@ class SuaVezStateHolderTest {
             assertEquals(1, state.uiState.value.myAssignments.size)
 
             // Transferir administração para outro morador redireciona admin para NoHouse
-            state.transferAdminAndLeave(TestProfile.MEMBER.uid)
+            state.transferAdminAndLeave(MEMBER_UID)
             assertNull(state.uiState.value.currentHouse)
             assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
             assertEquals(MainTab.HOUSE, state.uiState.value.activeTab)
@@ -702,7 +707,7 @@ class SuaVezStateHolderTest {
 
             // Antigo membro agora é admin, vê a tarefa reaberta e pode destruir a casa
             state.signOut()
-            state.signInAs(TestProfile.MEMBER)
+            state.signInWithGoogleIdToken(MEMBER_TOKEN)
             assertTrue(state.uiState.value.isAdmin)
             assertEquals(listOf(adminPendingId), state.uiState.value.openAssignments.map { it.id })
             state.destroyHouse()
@@ -720,12 +725,12 @@ class SuaVezStateHolderTest {
         val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
         try {
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
             state.addWeeklyTask("Lavar louça", TaskCategory.LIMPEZA, 5, TaskDeadline.HOJE)
             val originalName = state.uiState.value.currentHouse!!.nome
             state.signOut()
 
-            state.signInAs(TestProfile.MEMBER)
+            state.signInWithGoogleIdToken(MEMBER_TOKEN)
             assertFalse(state.uiState.value.isAdmin)
             val taskId = state.uiState.value.openAssignments.single().id
             state.claimOpenTask(taskId)
@@ -733,7 +738,7 @@ class SuaVezStateHolderTest {
             // Morador comum não consegue renomear, transferir nem destruir a casa
             state.renameHouse("Casa Hackeada")
             assertEquals(originalName, state.uiState.value.currentHouse?.nome)
-            state.transferAdminAndLeave(TestProfile.ADMIN.uid)
+            state.transferAdminAndLeave(ADMIN_UID)
             assertNotNull(state.uiState.value.currentHouse)
             state.destroyHouse()
             assertNotNull(state.uiState.value.currentHouse)
@@ -747,8 +752,128 @@ class SuaVezStateHolderTest {
 
             // Tarefa pendente do morador que saiu voltou para tarefas abertas
             state.signOut()
-            state.signInAs(TestProfile.ADMIN)
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
             assertEquals(1, state.uiState.value.openAssignments.size)
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun restoreSessionWithActiveHouseNavigatesToMain() = runBlocking {
+        val fake = FakeSuaVezDataSource(initialActiveUid = ADMIN_UID)
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.restoreSession()
+
+            assertEquals(AppDestination.Main, state.uiState.value.destination)
+            assertEquals(MainTab.TASKS, state.uiState.value.activeTab)
+            assertEquals(ADMIN_UID, state.uiState.value.currentUser?.uid)
+            assertEquals("https://example.com/admin.jpg", state.uiState.value.currentUser?.fotoUrl)
+            assertEquals(TEST_HOUSE_ID, state.uiState.value.currentHouse?.id)
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun restoreSessionWithoutHouseNavigatesToNoHouse() = runBlocking {
+        val fake = FakeSuaVezDataSource(startWithoutHouse = true, initialActiveUid = MEMBER_UID)
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.restoreSession()
+
+            assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
+            assertEquals(MainTab.HOUSE, state.uiState.value.activeTab)
+            assertEquals(MEMBER_UID, state.uiState.value.currentUser?.uid)
+            assertNull(state.uiState.value.currentHouse)
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun restoreSessionWithoutActiveUserStaysOnLogin() = runBlocking {
+        val fake = FakeSuaVezDataSource(initialActiveUid = null)
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.restoreSession()
+
+            assertEquals(AppDestination.Login, state.uiState.value.destination)
+            assertNull(state.uiState.value.currentUser)
+            assertFalse(state.uiState.value.isAuthenticating)
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun googleSignInPreservesExistingCurrentHouseIdAndLoadsPhoto() = runBlocking {
+        val fake = FakeSuaVezDataSource()
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
+            assertEquals(TEST_HOUSE_ID, state.uiState.value.currentHouse?.id)
+            assertEquals("https://example.com/admin.jpg", state.uiState.value.currentUser?.fotoUrl)
+
+            state.signOut()
+            assertEquals(AppDestination.Login, state.uiState.value.destination)
+            assertEquals(1, fake.signOutCalls)
+
+            // Re-login com a mesma conta deve preservar currentHouseId existente
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
+            assertEquals(AppDestination.Main, state.uiState.value.destination)
+            assertEquals(TEST_HOUSE_ID, state.uiState.value.currentHouse?.id)
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun googleSignInFailureShowsErrorAndStaysOnLogin() = runBlocking {
+        val fake = FakeSuaVezDataSource()
+        fake.nextSignInError = IllegalStateException("Token Google inválido")
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
+
+            assertEquals(AppDestination.Login, state.uiState.value.destination)
+            assertNull(state.uiState.value.currentUser)
+            assertFalse(state.uiState.value.isAuthenticating)
+            assertTrue(state.uiState.value.snackbar?.message?.contains("Token Google inválido") == true)
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun restoreSessionIfNeededIsIdempotentAndResetsOnSignOut() = runBlocking {
+        val fake = FakeSuaVezDataSource(initialActiveUid = null)
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.restoreSessionIfNeeded()
+            assertEquals(1, fake.restoreCalls)
+            assertEquals(AppDestination.Login, state.uiState.value.destination)
+
+            // Segunda chamada na mesma sessão deslogada não deve consultar novamente
+            fake.activeUid = ADMIN_UID
+            state.restoreSessionIfNeeded()
+            assertEquals(1, fake.restoreCalls)
+            assertNull(state.uiState.value.currentUser)
+
+            // Após login e signOut, restoreSessionIfNeeded deve voltar a restaurar
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
+            state.signOut()
+            fake.activeUid = ADMIN_UID
+            state.restoreSessionIfNeeded()
+            assertEquals(2, fake.restoreCalls)
+            assertEquals(ADMIN_UID, state.uiState.value.currentUser?.uid)
         } finally {
             testScope.cancel()
         }
@@ -757,10 +882,14 @@ class SuaVezStateHolderTest {
 
 private class FakeSuaVezDataSource(
     startWithoutHouse: Boolean = false,
+    initialActiveUid: String? = null,
 ) : SuaVezDataSource {
     var nextSignInError: Throwable? = null
     var nextPreferenceError: Throwable? = null
     var updatePreferenceCalls: Int = 0
+    var restoreCalls: Int = 0
+    var signOutCalls: Int = 0
+    var activeUid: String? = initialActiveUid
     var rolloverStarted: CompletableDeferred<Unit>? = null
     var rolloverRelease: CompletableDeferred<Unit>? = null
     var ensureCurrentWeekCompleted: Boolean = false
@@ -775,33 +904,50 @@ private class FakeSuaVezDataSource(
     private val assignmentsByHouse = MutableStateFlow<Map<String, List<Assignment>>>(emptyMap())
 
     init {
+        val adminUser = User(
+            uid = ADMIN_UID,
+            nome = "Admin Teste",
+            email = "admin@suavez.app",
+            fotoUrl = "https://example.com/admin.jpg",
+            currentHouseId = if (startWithoutHouse) null else TEST_HOUSE_ID,
+        )
+        val memberUser = User(
+            uid = MEMBER_UID,
+            nome = "Membro Teste",
+            email = "membro@suavez.app",
+            fotoUrl = "https://example.com/member.jpg",
+            currentHouseId = if (startWithoutHouse) null else TEST_HOUSE_ID,
+        )
+        users[ADMIN_UID] = adminUser
+        users[MEMBER_UID] = memberUser
+
         if (!startWithoutHouse) {
             val house = House(
-                id = HouseRepository.DEFAULT_TEST_HOUSE_ID,
-                nome = HouseRepository.DEFAULT_TEST_HOUSE_NAME,
-                codigoConvite = HouseRepository.DEFAULT_TEST_INVITE_CODE,
-                criadaPorUid = TestProfile.ADMIN.uid,
+                id = TEST_HOUSE_ID,
+                nome = "Casa Sua Vez",
+                codigoConvite = "SV-1000",
+                criadaPorUid = ADMIN_UID,
                 semanaAtual = weekKey,
             )
             houses.value = mapOf(house.id to house)
             membersByHouse.value = mapOf(
-                house.id to TestProfile.entries.map {
+                house.id to listOf(
                     Member(
-                        uid = it.uid,
-                        nome = it.nome,
-                        papel = it.role.name,
+                        uid = ADMIN_UID,
+                        nome = adminUser.nome,
+                        fotoUrl = adminUser.fotoUrl,
+                        papel = HouseRole.ADMIN.name,
                         pontosPorMes = mapOf(monthKey to 0),
-                    )
-                },
+                    ),
+                    Member(
+                        uid = MEMBER_UID,
+                        nome = memberUser.nome,
+                        fotoUrl = memberUser.fotoUrl,
+                        papel = HouseRole.MEMBER.name,
+                        pontosPorMes = mapOf(monthKey to 0),
+                    ),
+                ),
             )
-            TestProfile.entries.forEach {
-                users[it.uid] = User(
-                    uid = it.uid,
-                    nome = it.nome,
-                    email = it.email,
-                    currentHouseId = house.id,
-                )
-            }
         }
     }
 
@@ -817,19 +963,48 @@ private class FakeSuaVezDataSource(
     override fun observeWeekAssignments(houseId: String, semana: String): Flow<List<Assignment>> =
         assignmentsByHouse.map { map -> map[houseId].orEmpty().filter { it.semana == semana } }
 
-    override suspend fun loadOrBootstrapTestProfile(profile: TestProfile): Result<TestProfileSession> =
+    override suspend fun restoreSession(): Result<AuthSession?> = runCatching {
+        restoreCalls += 1
+        val uid = activeUid ?: return@runCatching null
+        val user = users[uid] ?: return@runCatching null
+        val house = user.currentHouseId?.let { houses.value[it] }
+        val members = house?.let { membersByHouse.value[it.id].orEmpty() }.orEmpty()
+        AuthSession(user = user, house = house, members = members)
+    }
+
+    override suspend fun signInWithGoogleIdToken(idToken: String): Result<AuthSession> =
         runCatching {
             nextSignInError?.let { error ->
                 nextSignInError = null
                 throw error
             }
-            val user = users.getOrPut(profile.uid) {
-                User(uid = profile.uid, nome = profile.nome, email = profile.email, currentHouseId = null)
+            val uid = when (idToken) {
+                ADMIN_TOKEN -> ADMIN_UID
+                MEMBER_TOKEN -> MEMBER_UID
+                else -> "u_$idToken"
             }
+            val existing = users[uid]
+            val user = existing?.copy(
+                nome = existing.nome.ifBlank { "Usuário $uid" },
+                email = existing.email.ifBlank { "$uid@suavez.app" },
+            ) ?: User(
+                uid = uid,
+                nome = "Usuário $uid",
+                email = "$uid@suavez.app",
+                fotoUrl = "https://example.com/$uid.jpg",
+                currentHouseId = null,
+            )
+            users[uid] = user
+            activeUid = uid
             val house = user.currentHouseId?.let { houses.value[it] }
             val members = house?.let { membersByHouse.value[it.id].orEmpty() }.orEmpty()
-            TestProfileSession(user = user, house = house, members = members)
+            AuthSession(user = user, house = house, members = members)
         }
+
+    override suspend fun signOut(): Result<Unit> = runCatching {
+        signOutCalls += 1
+        activeUid = null
+    }
 
     override suspend fun createHouse(houseName: String, creator: User): Result<House> = runCatching {
         val clean = houseName.trim()

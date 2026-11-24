@@ -39,15 +39,18 @@ class RepositoryAndMappersTest {
             uid = "u_1",
             nome = "Ana Costa",
             email = "ana@suavez.app",
+            fotoUrl = "https://example.com/ana.jpg",
             currentHouseId = "h_1",
         )
         val uiUser = user.toUiUser()
         assertEquals("u_1", uiUser.uid)
         assertEquals("Ana Costa", uiUser.nome)
         assertEquals("ana@suavez.app", uiUser.email)
+        assertEquals("https://example.com/ana.jpg", uiUser.fotoUrl)
 
         val backToFirestore = uiUser.toFirestoreUser(currentHouseId = "h_1")
         assertEquals("h_1", backToFirestore.currentHouseId)
+        assertEquals("https://example.com/ana.jpg", backToFirestore.fotoUrl)
 
         val house = House(
             id = "h_1",

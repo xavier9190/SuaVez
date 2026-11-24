@@ -15,10 +15,11 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
+import xavier.pedro.suavez.auth.GoogleAuthHelper
+import xavier.pedro.suavez.auth.GoogleSignInOutcome
 import xavier.pedro.suavez.databinding.ActivityLoginBinding
 import xavier.pedro.suavez.ui.state.SnackbarFeedback
 import xavier.pedro.suavez.ui.state.SuaVezSharedViewModel
-import xavier.pedro.suavez.ui.state.TestProfile
 
 class LoginActivity : AppCompatActivity() {
 
@@ -29,6 +30,7 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private var navigatedToMain = false
+    private var isRequestingCredential = false
     private var lastShownSnackbarId: Long? = null
     private var currentSnackbar: Snackbar? = null
 
@@ -50,11 +52,10 @@ class LoginActivity : AppCompatActivity() {
             insets
         }
 
-        binding.btnSignInAdmin.setOnClickListener {
-            signIn(TestProfile.ADMIN)
-        }
-        binding.btnSignInMember.setOnClickListener {
-            signIn(TestProfile.MEMBER)
+        sharedViewModel.stateHolder.restoreSessionIfNeeded()
+
+        binding.btnSignInGoogle.setOnClickListener {
+            signInWithGoogle()
         }
 
         lifecycleScope.launch {
@@ -65,25 +66,44 @@ class LoginActivity : AppCompatActivity() {
                         return@collect
                     }
 
-                    val loading = state.isAuthenticating
-                    binding.btnSignInAdmin.isEnabled = !loading
-                    binding.btnSignInMember.isEnabled = !loading
-                    binding.btnSignInAdmin.text = getString(
-                        if (loading) R.string.login_loading else R.string.login_as_admin,
-                    )
-                    binding.btnSignInMember.text = getString(
-                        if (loading) R.string.login_loading else R.string.login_as_member,
-                    )
-                    binding.progressLogin.isVisible = loading
-
+                    renderLoadingState(state.isAuthenticating)
                     renderSnackbar(state.snackbar)
                 }
             }
         }
     }
 
-    private fun signIn(profile: TestProfile) {
-        sharedViewModel.stateHolder.startSignIn(profile)
+    private fun signInWithGoogle() {
+        if (isRequestingCredential || sharedViewModel.uiState.value.isAuthenticating) return
+        isRequestingCredential = true
+        renderLoadingState(sharedViewModel.uiState.value.isAuthenticating)
+
+        lifecycleScope.launch {
+            val outcome = GoogleAuthHelper.requestGoogleIdToken(this@LoginActivity)
+            isRequestingCredential = false
+            renderLoadingState(sharedViewModel.uiState.value.isAuthenticating)
+
+            when (outcome) {
+                is GoogleSignInOutcome.Success -> {
+                    sharedViewModel.stateHolder.startGoogleSignIn(outcome.idToken)
+                }
+                is GoogleSignInOutcome.Cancelled -> {
+                    sharedViewModel.stateHolder.reportAuthError(getString(R.string.login_cancelled))
+                }
+                is GoogleSignInOutcome.Error -> {
+                    sharedViewModel.stateHolder.reportAuthError(outcome.message)
+                }
+            }
+        }
+    }
+
+    private fun renderLoadingState(isStateAuthenticating: Boolean) {
+        val loading = isRequestingCredential || isStateAuthenticating
+        binding.btnSignInGoogle.isEnabled = !loading
+        binding.btnSignInGoogle.text = getString(
+            if (loading) R.string.login_loading else R.string.login_with_google,
+        )
+        binding.progressLogin.isVisible = loading
     }
 
     private fun renderSnackbar(feedback: SnackbarFeedback?) {
