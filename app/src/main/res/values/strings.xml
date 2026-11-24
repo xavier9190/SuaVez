@@ -181,6 +181,7 @@
     <string name="action_rename_house">Renomear casa</string>
     <string name="action_leave_house">Sair da casa</string>
     <string name="action_destroy_house">Destruir casa</string>
+    <string name="action_test_notification">Testar notificação</string>
     <string name="action_sign_out">Sair da conta</string>
     <string name="action_save">Salvar</string>
     <string name="action_close">Fechar</string>
@@ -210,4 +211,11 @@
     <string name="open_tasks_distribute_pending">Distribuir pendentes</string>
     <string name="cd_open_tasks_back">Voltar</string>
     <string name="cd_open_tasks_edit">Editar atividade</string>
+    <string name="google_web_client_id"
+        translatable="false">193953373596-7b875h9n976t2nf1d192ntpjkhgdupcm.apps.googleusercontent.com</string>
+
+    <!-- Notificações (#27) -->
+    <string name="notification_channel_deadlines_name">Prazos de tarefas</string>
+    <string name="notification_channel_deadlines_desc">Lembretes 1 dia antes do prazo das suas tarefas semanais</string>
+    <string name="notification_deadline_title">Sua Vez</string>
 </resources>

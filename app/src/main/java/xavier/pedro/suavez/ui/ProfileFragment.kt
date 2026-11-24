@@ -103,6 +103,10 @@ class ProfileFragment : Fragment() {
             showDestroyHouseDialog(houseName)
         }
 
+        binding.btnTestNotification.setOnClickListener {
+            sharedViewModel.stateHolder.triggerTestNotification()
+        }
+
         binding.btnSignOut.setOnClickListener {
             binding.btnSignOut.isEnabled = false
             val appContext = requireContext().applicationContext
