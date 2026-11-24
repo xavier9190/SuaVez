@@ -568,7 +568,7 @@ class SuaVezStateHolder(
         if (!state.isAdmin) return
         val houseId = state.currentHouse?.id ?: return
         val clean = newName.trim()
-        if (clean.isEmpty()) return
+        if (clean.length < 2) return
         scope.launch {
             dataSource.renameHouse(houseId, clean)
                 .onSuccess { showMessage("Casa renomeada para \"$clean\"") }
@@ -578,8 +578,11 @@ class SuaVezStateHolder(
 
     fun transferAdminAndLeave(newAdminUid: String) {
         val snapshot = state
+        if (!snapshot.isAdmin) return
         val houseId = snapshot.currentHouse?.id ?: return
         val uid = snapshot.currentUser?.uid ?: return
+        if (newAdminUid.isBlank() || newAdminUid == uid) return
+        if (snapshot.members.none { it.uid == newAdminUid }) return
         scope.launch {
             dataSource.transferAdminAndLeave(houseId, uid, newAdminUid)
                 .onSuccess { clearHouseForCurrentUser("Você saiu da casa") }
@@ -589,6 +592,7 @@ class SuaVezStateHolder(
 
     fun leaveHouseAsMember() {
         val snapshot = state
+        if (snapshot.isAdmin) return
         val houseId = snapshot.currentHouse?.id ?: return
         val uid = snapshot.currentUser?.uid ?: return
         scope.launch {

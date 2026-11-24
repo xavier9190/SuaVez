@@ -658,6 +658,101 @@ class SuaVezStateHolderTest {
             testScope.cancel()
         }
     }
+
+    @Test
+    fun adminCanRenameTransferAndDestroyHouseWithValidationGuards() = runBlocking {
+        val fake = FakeSuaVezDataSource()
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.signInAs(TestProfile.ADMIN)
+            val originalName = state.uiState.value.currentHouse?.nome
+
+            // Nome com menos de 2 caracteres não dispara alteração
+            state.renameHouse(" A ")
+            assertEquals(originalName, state.uiState.value.currentHouse?.nome)
+
+            // Nome válido renomeia a casa
+            state.renameHouse("  República Central  ")
+            assertEquals("República Central", state.uiState.value.currentHouse?.nome)
+            assertEquals("Casa renomeada para \"República Central\"", state.uiState.value.snackbar?.message)
+
+            // Admin não pode sair usando leaveHouseAsMember sem transferir administração
+            state.leaveHouseAsMember()
+            assertNotNull(state.uiState.value.currentHouse)
+
+            // Transferir para si mesmo ou UID inexistente é ignorado
+            state.transferAdminAndLeave(TestProfile.ADMIN.uid)
+            assertNotNull(state.uiState.value.currentHouse)
+            state.transferAdminAndLeave("uid_inexistente")
+            assertNotNull(state.uiState.value.currentHouse)
+
+            // Tarefa pendente do admin que transferiu e saiu volta para tarefas abertas
+            state.addWeeklyTask("Passar pano", TaskCategory.LIMPEZA, 5, TaskDeadline.HOJE)
+            val adminPendingId = state.uiState.value.openAssignments.single().id
+            state.claimOpenTask(adminPendingId)
+            assertEquals(1, state.uiState.value.myAssignments.size)
+
+            // Transferir administração para outro morador redireciona admin para NoHouse
+            state.transferAdminAndLeave(TestProfile.MEMBER.uid)
+            assertNull(state.uiState.value.currentHouse)
+            assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
+            assertEquals(MainTab.HOUSE, state.uiState.value.activeTab)
+            assertEquals("Você saiu da casa", state.uiState.value.snackbar?.message)
+
+            // Antigo membro agora é admin, vê a tarefa reaberta e pode destruir a casa
+            state.signOut()
+            state.signInAs(TestProfile.MEMBER)
+            assertTrue(state.uiState.value.isAdmin)
+            assertEquals(listOf(adminPendingId), state.uiState.value.openAssignments.map { it.id })
+            state.destroyHouse()
+            assertNull(state.uiState.value.currentHouse)
+            assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
+            assertEquals("Casa excluída", state.uiState.value.snackbar?.message)
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun memberCanLeaveHouseAndCannotRenameTransferOrDestroy() = runBlocking {
+        val fake = FakeSuaVezDataSource()
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.signInAs(TestProfile.ADMIN)
+            state.addWeeklyTask("Lavar louça", TaskCategory.LIMPEZA, 5, TaskDeadline.HOJE)
+            val originalName = state.uiState.value.currentHouse!!.nome
+            state.signOut()
+
+            state.signInAs(TestProfile.MEMBER)
+            assertFalse(state.uiState.value.isAdmin)
+            val taskId = state.uiState.value.openAssignments.single().id
+            state.claimOpenTask(taskId)
+
+            // Morador comum não consegue renomear, transferir nem destruir a casa
+            state.renameHouse("Casa Hackeada")
+            assertEquals(originalName, state.uiState.value.currentHouse?.nome)
+            state.transferAdminAndLeave(TestProfile.ADMIN.uid)
+            assertNotNull(state.uiState.value.currentHouse)
+            state.destroyHouse()
+            assertNotNull(state.uiState.value.currentHouse)
+
+            // Morador comum consegue sair da casa e é redirecionado para NoHouse
+            state.leaveHouseAsMember()
+            assertNull(state.uiState.value.currentHouse)
+            assertEquals(AppDestination.NoHouse, state.uiState.value.destination)
+            assertEquals(MainTab.HOUSE, state.uiState.value.activeTab)
+            assertEquals("Você saiu da casa", state.uiState.value.snackbar?.message)
+
+            // Tarefa pendente do morador que saiu voltou para tarefas abertas
+            state.signOut()
+            state.signInAs(TestProfile.ADMIN)
+            assertEquals(1, state.uiState.value.openAssignments.size)
+        } finally {
+            testScope.cancel()
+        }
+    }
 }
 
 private class FakeSuaVezDataSource(
@@ -822,11 +917,8 @@ private class FakeSuaVezDataSource(
         leavingAdminUid: String,
         newAdminUid: String,
     ): Result<Unit> = runCatching {
-        val updated = membersByHouse.value[houseId].orEmpty()
-            .filterNot { it.uid == leavingAdminUid }
-            .map { if (it.uid == newAdminUid) it.copy(papel = HouseRole.ADMIN.name) else it }
-        membersByHouse.value = membersByHouse.value + (houseId to updated)
-        users[leavingAdminUid]?.let { users[leavingAdminUid] = it.copy(currentHouseId = null) }
+        promoteToAdmin(houseId, leavingAdminUid, newAdminUid).getOrThrow()
+        removeMember(houseId, leavingAdminUid).getOrThrow()
     }
 
     override suspend fun leaveHouseAsMember(houseId: String, memberUid: String): Result<Unit> =
