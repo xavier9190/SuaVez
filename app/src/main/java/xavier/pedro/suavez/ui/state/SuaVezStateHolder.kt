@@ -481,6 +481,7 @@ class SuaVezStateHolder(
         val snapshot = state
         val houseId = snapshot.currentHouse?.id ?: return
         val uid = snapshot.currentUser?.uid ?: return
+        if (snapshot.getMyPreference(recurringTaskId) == level) return
         scope.launch {
             dataSource.updatePreference(houseId, uid, recurringTaskId, level)
                 .onSuccess { showMessage("Preferência salva") }

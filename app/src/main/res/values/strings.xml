@@ -113,8 +113,16 @@
     <string name="dialog_delete_recurring_message">A tarefa \"%1$s\" deixará de entrar nos próximos ciclos e no cálculo da cota.</string>
     <string name="action_confirm_delete">Excluir</string>
 
-    <!-- Placeholders das abas futuras (#22, #23, #24) -->
-    <string name="placeholder_preferences">Aba Preferências será migrada em breve.</string>
+    <!-- Aba Preferências (#22) -->
+    <string name="preferences_subtitle">Defina como você se sente sobre cada tarefa doméstica para um sorteio justo.</string>
+    <string name="preferences_empty_title">Nenhuma tarefa recorrente ainda</string>
+    <string name="preferences_empty_subtitle">Quando o admin cadastrar tarefas recorrentes na Casa, elas aparecerão aqui.</string>
+    <string name="preference_odeio">Odeio</string>
+    <string name="preference_tanto_faz">Tanto faz</string>
+    <string name="preference_gosto">Gosto</string>
+    <string name="cd_preference_option">%1$s: %2$s</string>
+
+    <!-- Placeholders das abas futuras (#23, #24) -->
     <string name="placeholder_house_invite">Código de convite: %1$s</string>
     <string name="placeholder_house">Aba Casa será migrada em breve.</string>
     <string name="placeholder_profile_subtitle">Configurações completas de perfil serão migradas em breve.</string>

@@ -617,12 +617,55 @@ class SuaVezStateHolderTest {
             appScope.cancel()
         }
     }
+
+    @Test
+    fun setPreferencePersistsShowsSnackbarHandlesErrorsAndSkipsNoOp() = runBlocking {
+        val fake = FakeSuaVezDataSource()
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.signInAs(TestProfile.ADMIN)
+            state.saveRecurringTask(null, "Lavar banheiro", TaskCategory.LIMPEZA, 8, TaskFrequency.SEMANAL)
+            val taskId = state.uiState.value.recurringTasks.single().id
+            state.clearSnackbar()
+
+            // Tocar no nível padrão já ativo (TANTO_FAZ) não grava nem dispara snackbar
+            state.setPreference(taskId, PreferenceLevel.TANTO_FAZ)
+            assertEquals(0, fake.updatePreferenceCalls)
+            assertNull(state.uiState.value.snackbar)
+
+            // Alterar para GOSTO persiste e exibe snackbar
+            state.setPreference(taskId, PreferenceLevel.GOSTO)
+            assertEquals(1, fake.updatePreferenceCalls)
+            assertEquals(PreferenceLevel.GOSTO, state.uiState.value.getMyPreference(taskId))
+            assertEquals("Preferência salva", state.uiState.value.snackbar?.message)
+
+            // Tocar no mesmo nível já salvo não repete escrita
+            state.clearSnackbar()
+            state.setPreference(taskId, PreferenceLevel.GOSTO)
+            assertEquals(1, fake.updatePreferenceCalls)
+            assertNull(state.uiState.value.snackbar)
+
+            // Falha ao persistir exibe erro
+            fake.nextPreferenceError = IllegalStateException("offline")
+            state.setPreference(taskId, PreferenceLevel.ODEIO)
+            assertEquals(2, fake.updatePreferenceCalls)
+            assertEquals(PreferenceLevel.GOSTO, state.uiState.value.getMyPreference(taskId))
+            assertTrue(
+                state.uiState.value.snackbar?.message?.startsWith("Erro ao salvar preferência:") == true,
+            )
+        } finally {
+            testScope.cancel()
+        }
+    }
 }
 
 private class FakeSuaVezDataSource(
     startWithoutHouse: Boolean = false,
 ) : SuaVezDataSource {
     var nextSignInError: Throwable? = null
+    var nextPreferenceError: Throwable? = null
+    var updatePreferenceCalls: Int = 0
     var rolloverStarted: CompletableDeferred<Unit>? = null
     var rolloverRelease: CompletableDeferred<Unit>? = null
     var ensureCurrentWeekCompleted: Boolean = false
@@ -805,6 +848,11 @@ private class FakeSuaVezDataSource(
         taskId: String,
         level: PreferenceLevel,
     ): Result<Unit> = runCatching {
+        updatePreferenceCalls++
+        nextPreferenceError?.let { error ->
+            nextPreferenceError = null
+            throw error
+        }
         val updated = membersByHouse.value[houseId].orEmpty().map { member ->
             if (member.uid == uid) {
                 member.copy(preferences = member.preferences + (taskId to level.name))
