@@ -218,4 +218,10 @@
     <string name="notification_channel_deadlines_name">Prazos de tarefas</string>
     <string name="notification_channel_deadlines_desc">Lembretes 1 dia antes do prazo das suas tarefas semanais</string>
     <string name="notification_deadline_title">Sua Vez</string>
+
+    <!-- Permissão de notificações (#28) -->
+    <string name="dialog_notification_permission_title">Ativar lembretes de prazo?</string>
+    <string name="dialog_notification_permission_message">O Sua Vez envia um lembrete 1 dia antes do prazo, às 09:00, para você não esquecer suas tarefas da semana.</string>
+    <string name="action_enable_notifications">Ativar</string>
+    <string name="action_not_now">Agora não</string>
 </resources>

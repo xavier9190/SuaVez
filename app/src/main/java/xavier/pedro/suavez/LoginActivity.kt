@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import xavier.pedro.suavez.auth.GoogleAuthHelper
 import xavier.pedro.suavez.auth.GoogleSignInOutcome
 import xavier.pedro.suavez.databinding.ActivityLoginBinding
+import xavier.pedro.suavez.notifications.TaskDeadlineNotifications
 import xavier.pedro.suavez.ui.state.SnackbarFeedback
 import xavier.pedro.suavez.ui.state.SuaVezSharedViewModel
 
@@ -135,10 +136,11 @@ class LoginActivity : AppCompatActivity() {
     private fun navigateToMain() {
         if (navigatedToMain) return
         navigatedToMain = true
-        val intent = Intent(this, MainActivity::class.java).apply {
+        val mainIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
-        startActivity(intent)
+        TaskDeadlineNotifications.copyDeepLinkExtras(intent, mainIntent)
+        startActivity(mainIntent)
         finish()
     }
 }

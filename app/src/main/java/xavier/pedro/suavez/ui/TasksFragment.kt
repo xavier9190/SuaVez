@@ -2,6 +2,7 @@ package xavier.pedro.suavez.ui
 
 import android.content.res.ColorStateList
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -26,6 +27,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import xavier.pedro.suavez.R
 import xavier.pedro.suavez.databinding.FragmentTasksBinding
@@ -45,6 +48,9 @@ class TasksFragment : Fragment() {
     private val sharedViewModel: SuaVezSharedViewModel by activityViewModels {
         SuaVezSharedViewModel.Factory
     }
+
+    private var lastScrolledHighlightId: String? = null
+    private var highlightClearJob: Job? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -67,7 +73,7 @@ class TasksFragment : Fragment() {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 sharedViewModel.uiState.collect { state ->
                     val model = state.toTasksUiModel() ?: return@collect
-                    renderTasksUi(model)
+                    renderTasksUi(model, state.highlightedAssignmentId)
                 }
             }
         }
@@ -86,7 +92,7 @@ class TasksFragment : Fragment() {
         findNavController().navigate(R.id.action_tasksFragment_to_openTasksFragment)
     }
 
-    private fun renderTasksUi(model: TasksUiModel) {
+    private fun renderTasksUi(model: TasksUiModel, highlightedAssignmentId: String?) {
         val ctx = requireContext()
 
         // 1. Saudação
@@ -145,6 +151,7 @@ class TasksFragment : Fragment() {
             getString(R.string.tasks_pending_many, model.pendingCount)
         }
 
+        var highlightedCardView: View? = null
         if (model.myTasks.isEmpty()) {
             binding.cardEmptyTasks.isVisible = true
             binding.llMyTasksContainer.isVisible = false
@@ -159,10 +166,16 @@ class TasksFragment : Fragment() {
                     binding.llMyTasksContainer,
                     false,
                 )
-                bindTaskCard(cardBinding, item)
+                val isHighlighted = item.assignment.id == highlightedAssignmentId
+                bindTaskCard(cardBinding, item, isHighlighted)
+                if (isHighlighted) {
+                    highlightedCardView = cardBinding.root
+                }
                 binding.llMyTasksContainer.addView(cardBinding.root)
             }
         }
+
+        handleTaskHighlightScroll(highlightedAssignmentId, highlightedCardView)
 
         // 4. Ritmo da casa + prévia de Tarefas abertas
         binding.tvHouseRhythmSubtitle.text = getString(R.string.tasks_rhythm_subtitle, model.houseName)
@@ -227,11 +240,59 @@ class TasksFragment : Fragment() {
         }
     }
 
-    private fun bindTaskCard(cardBinding: ItemTaskCardBinding, item: TaskItemUiModel) {
+    private fun handleTaskHighlightScroll(
+        highlightedAssignmentId: String?,
+        highlightedCardView: View?,
+    ) {
+        if (highlightedAssignmentId == null) {
+            lastScrolledHighlightId = null
+            highlightClearJob?.cancel()
+            highlightClearJob = null
+            return
+        }
+        val targetView = highlightedCardView ?: return
+        if (lastScrolledHighlightId == highlightedAssignmentId) return
+
+        lastScrolledHighlightId = highlightedAssignmentId
+        val scrollPaddingPx = requireContext().dp(16)
+        binding.scrollTasks.post {
+            val scrollView = _binding?.scrollTasks ?: return@post
+            val currentTarget = scrollView.findViewWithTag<View>(highlightedAssignmentId) ?: return@post
+            if (!currentTarget.isAttachedToWindow || !scrollView.isAttachedToWindow) {
+                return@post
+            }
+            val rect = Rect()
+            currentTarget.getDrawingRect(rect)
+            scrollView.offsetDescendantRectToMyCoords(currentTarget, rect)
+            scrollView.smoothScrollTo(0, (rect.top - scrollPaddingPx).coerceAtLeast(0))
+        }
+        highlightClearJob?.cancel()
+        highlightClearJob = viewLifecycleOwner.lifecycleScope.launch {
+            delay(HIGHLIGHT_DURATION_MS)
+            sharedViewModel.stateHolder.clearHighlightedAssignment(highlightedAssignmentId)
+        }
+    }
+
+    private fun bindTaskCard(
+        cardBinding: ItemTaskCardBinding,
+        item: TaskItemUiModel,
+        isHighlighted: Boolean,
+    ) {
         val ctx = requireContext()
         val task = item.assignment
         val showSuaVez = item.isSuaVez && !task.isDone
         val nightMode = ctx.isNightMode()
+
+        cardBinding.cardTaskRoot.tag = task.id
+        if (isHighlighted) {
+            cardBinding.cardTaskRoot.strokeWidth = ctx.dp(2)
+            cardBinding.cardTaskRoot.strokeColor = ContextCompat.getColor(ctx, R.color.verde_casa)
+            cardBinding.cardTaskRoot.cardElevation = ctx.dp(4).toFloat()
+        } else {
+            cardBinding.cardTaskRoot.strokeWidth = ctx.dp(1)
+            cardBinding.cardTaskRoot.strokeColor = ContextCompat.getColor(ctx, R.color.linha)
+            cardBinding.cardTaskRoot.cardElevation = ctx.dp(1).toFloat()
+        }
 
         cardBinding.viewSuaVezAccent.isVisible = showSuaVez
         cardBinding.tvSuaVezBadge.isVisible = showSuaVez
@@ -330,7 +391,17 @@ class TasksFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        highlightClearJob?.cancel()
+        highlightClearJob = null
+        lastScrolledHighlightId?.let { activeId ->
+            sharedViewModel.stateHolder.clearHighlightedAssignment(activeId)
+        }
+        lastScrolledHighlightId = null
         super.onDestroyView()
         _binding = null
+    }
+
+    private companion object {
+        const val HIGHLIGHT_DURATION_MS = 3_500L
     }
 }

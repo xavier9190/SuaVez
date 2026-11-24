@@ -4,10 +4,12 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import xavier.pedro.suavez.MainActivity
 import xavier.pedro.suavez.R
 
 object TaskDeadlineNotifications {
@@ -19,6 +21,9 @@ object TaskDeadlineNotifications {
     const val KEY_TASK_TITLE = "task_title"
     const val TEST_NOTIFICATION_ID = 9001
 
+    const val EXTRA_OPEN_TASKS_TAB = "extra_open_tasks_tab"
+    const val EXTRA_HIGHLIGHT_ASSIGNMENT_ID = "extra_highlight_assignment_id"
+
     fun uniqueWorkName(assignmentId: String): String = "task_deadline_$assignmentId"
 
     fun notificationBody(taskTitle: String): String =
@@ -28,6 +33,37 @@ object TaskDeadlineNotifications {
         val raw = assignmentId.hashCode() and 0x7FFFFFFF
         return if (raw == TEST_NOTIFICATION_ID) raw + 1 else raw
     }
+
+    fun createDeepLinkIntent(context: Context, assignmentId: String?): Intent =
+        Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(EXTRA_OPEN_TASKS_TAB, true)
+            assignmentId?.takeIf { it.isNotBlank() }?.let { id ->
+                putExtra(EXTRA_HIGHLIGHT_ASSIGNMENT_ID, id)
+            }
+        }
+
+    fun copyDeepLinkExtras(source: Intent?, target: Intent) {
+        if (!isTasksDeepLink(source)) return
+        target.putExtra(EXTRA_OPEN_TASKS_TAB, true)
+        extractHighlightAssignmentId(source)?.let { id ->
+            target.putExtra(EXTRA_HIGHLIGHT_ASSIGNMENT_ID, id)
+        }
+    }
+
+    fun clearDeepLinkExtras(intent: Intent?) {
+        intent?.removeExtra(EXTRA_OPEN_TASKS_TAB)
+        intent?.removeExtra(EXTRA_HIGHLIGHT_ASSIGNMENT_ID)
+    }
+
+    fun isTasksDeepLink(intent: Intent?): Boolean =
+        intent?.getBooleanExtra(EXTRA_OPEN_TASKS_TAB, false) == true ||
+            !extractHighlightAssignmentId(intent).isNullOrBlank()
+
+    fun extractHighlightAssignmentId(intent: Intent?): String? =
+        intent?.getStringExtra(EXTRA_HIGHLIGHT_ASSIGNMENT_ID)?.takeIf { it.isNotBlank() }
 
     fun ensureNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return

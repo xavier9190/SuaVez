@@ -1227,6 +1227,154 @@ class SuaVezStateHolderTest {
             testScope.cancel()
         }
     }
+
+    @Test
+    fun eligibleDeadlineActionsTriggerNotificationPermissionPromptAndConsumeResetsIt() = runBlocking {
+        val fake = FakeSuaVezDataSource()
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
+            assertFalse(state.uiState.value.shouldPromptNotificationPermission)
+
+            // Tarefas sem prazo elegível não disparam o pedido
+            state.addWeeklyTask("Tirar lixo", TaskCategory.LIMPEZA, 2, TaskDeadline.HOJE)
+            assertFalse(state.uiState.value.shouldPromptNotificationPermission)
+            state.addWeeklyTask("Organizar armário", TaskCategory.OUTRAS, 2, TaskDeadline.SEM_PRAZO)
+            assertFalse(state.uiState.value.shouldPromptNotificationPermission)
+
+            // Criar atividade semanal com prazo SABADO dispara pedido
+            state.addWeeklyTask("Lavar banheiro", TaskCategory.LIMPEZA, 8, TaskDeadline.SABADO)
+            assertTrue(state.uiState.value.shouldPromptNotificationPermission)
+            state.consumeNotificationPermissionPrompt()
+            assertFalse(state.uiState.value.shouldPromptNotificationPermission)
+
+            // Recorrente sem abrir na semana ou com prazo HOJE não dispara
+            state.saveRecurringTask(
+                editingId = null,
+                title = "Limpar vidros",
+                category = TaskCategory.LIMPEZA,
+                points = 5,
+                frequency = TaskFrequency.SEMANAL,
+                openInCurrentWeek = false,
+                deadline = TaskDeadline.DOMINGO,
+            )
+            assertFalse(state.uiState.value.shouldPromptNotificationPermission)
+
+            state.saveRecurringTask(
+                editingId = null,
+                title = "Passar vassoura",
+                category = TaskCategory.LIMPEZA,
+                points = 2,
+                frequency = TaskFrequency.SEMANAL,
+                openInCurrentWeek = true,
+                deadline = TaskDeadline.HOJE,
+            )
+            assertFalse(state.uiState.value.shouldPromptNotificationPermission)
+
+            state.saveRecurringTask(
+                editingId = null,
+                title = "Regar plantas",
+                category = TaskCategory.OUTRAS,
+                points = 2,
+                frequency = TaskFrequency.DIARIA,
+                openInCurrentWeek = true,
+                deadline = null,
+            )
+            assertFalse(state.uiState.value.shouldPromptNotificationPermission)
+
+            // Recorrente aberta na semana com prazo DOMINGO dispara
+            state.saveRecurringTask(
+                editingId = null,
+                title = "Compras da semana",
+                category = TaskCategory.COMPRAS,
+                points = 5,
+                frequency = TaskFrequency.SEMANAL,
+                openInCurrentWeek = true,
+                deadline = TaskDeadline.DOMINGO,
+            )
+            assertTrue(state.uiState.value.shouldPromptNotificationPermission)
+            state.consumeNotificationPermissionPrompt()
+            assertFalse(state.uiState.value.shouldPromptNotificationPermission)
+
+            // Assumir tarefa aberta HOJE não dispara; assumir SABADO dispara
+            val hojeId = state.uiState.value.openAssignments.first { it.titulo == "Tirar lixo" }.id
+            state.claimOpenTask(hojeId)
+            assertFalse(state.uiState.value.shouldPromptNotificationPermission)
+
+            val sabadoId = state.uiState.value.openAssignments.first { it.titulo == "Lavar banheiro" }.id
+            state.claimOpenTask(sabadoId)
+            assertTrue(state.uiState.value.shouldPromptNotificationPermission)
+            state.consumeNotificationPermissionPrompt()
+            assertFalse(state.uiState.value.shouldPromptNotificationPermission)
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun handleTaskDeepLinkNavigatesToTasksTabAndHighlightsUntilCleared() = runBlocking {
+        val fake = FakeSuaVezDataSource()
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
+            state.selectTab(MainTab.PROFILE)
+            assertEquals(MainTab.PROFILE, state.uiState.value.activeTab)
+
+            state.handleTaskDeepLink("assign_42")
+            assertEquals(AppDestination.Main, state.uiState.value.destination)
+            assertEquals(MainTab.TASKS, state.uiState.value.activeTab)
+            assertEquals("assign_42", state.uiState.value.highlightedAssignmentId)
+
+            state.openOpenTasks()
+            state.handleTaskDeepLink("assign_99")
+            assertEquals(AppDestination.Main, state.uiState.value.destination)
+            assertEquals(MainTab.TASKS, state.uiState.value.activeTab)
+            assertEquals("assign_99", state.uiState.value.highlightedAssignmentId)
+
+            state.clearHighlightedAssignment("assign_other")
+            assertEquals("assign_99", state.uiState.value.highlightedAssignmentId)
+
+            state.clearHighlightedAssignment("assign_99")
+            assertNull(state.uiState.value.highlightedAssignmentId)
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun handleTaskDeepLinkPreservesPendingTargetAcrossColdStartAndClearsOnNoHouseOrSignOut() = runBlocking {
+        val fakeWithHouse = FakeSuaVezDataSource(initialActiveUid = ADMIN_UID)
+        val scopeWithHouse = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val stateWithHouse = SuaVezStateHolder(dataSource = fakeWithHouse, scope = scopeWithHouse)
+        try {
+            stateWithHouse.handleTaskDeepLink("assign_cold")
+            stateWithHouse.restoreSession()
+
+            assertEquals(AppDestination.Main, stateWithHouse.uiState.value.destination)
+            assertEquals(MainTab.TASKS, stateWithHouse.uiState.value.activeTab)
+            assertEquals("assign_cold", stateWithHouse.uiState.value.highlightedAssignmentId)
+
+            stateWithHouse.signOut()
+            assertNull(stateWithHouse.uiState.value.highlightedAssignmentId)
+        } finally {
+            scopeWithHouse.cancel()
+        }
+
+        val fakeNoHouse = FakeSuaVezDataSource(startWithoutHouse = true, initialActiveUid = MEMBER_UID)
+        val scopeNoHouse = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val stateNoHouse = SuaVezStateHolder(dataSource = fakeNoHouse, scope = scopeNoHouse)
+        try {
+            stateNoHouse.handleTaskDeepLink("assign_deleted")
+            stateNoHouse.restoreSession()
+
+            assertEquals(AppDestination.NoHouse, stateNoHouse.uiState.value.destination)
+            assertNull(stateNoHouse.uiState.value.highlightedAssignmentId)
+        } finally {
+            scopeNoHouse.cancel()
+        }
+    }
 }
 
 private class FakeTaskReminderScheduler : TaskReminderScheduler {
