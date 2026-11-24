@@ -59,7 +59,6 @@
     <string name="tasks_empty_title">Tudo em dia por aqui</string>
     <string name="tasks_empty_subtitle">Você ainda não pegou nenhuma tarefa nesta semana.</string>
     <string name="action_view_open_tasks">Ver tarefas abertas</string>
-    <string name="open_tasks_coming_soon">Tela de tarefas abertas será liberada na próxima etapa.</string>
 
     <string name="tasks_rhythm_title">Ritmo da casa</string>
     <string name="tasks_rhythm_subtitle">Semana coletiva · %1$s</string>
