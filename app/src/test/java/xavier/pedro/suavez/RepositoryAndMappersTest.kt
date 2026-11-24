@@ -30,6 +30,9 @@ import xavier.pedro.suavez.data.repository.toUiUser
 import xavier.pedro.suavez.ui.state.TaskCategory
 import xavier.pedro.suavez.ui.state.TaskDeadline
 import xavier.pedro.suavez.ui.state.TaskFrequency
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.util.TimeZone
 
 class RepositoryAndMappersTest {
 
@@ -269,5 +272,91 @@ class RepositoryAndMappersTest {
         assertFalse(HouseRepository.isValidInviteCode("SV-12"))
         assertFalse(HouseRepository.isValidInviteCode("SV-12345"))
         assertFalse(HouseRepository.isValidInviteCode("ABCD"))
+    }
+
+    @Test
+    fun computeReminderTriggerAtMillisCalculatesFridayAndSaturdayMorning() {
+        val zoneId = ZoneId.of("America/Recife")
+        val timeZone = TimeZone.getTimeZone(zoneId)
+        val mondayMorning = ZonedDateTime.of(2026, 4, 13, 8, 0, 0, 0, zoneId)
+            .toInstant()
+            .toEpochMilli()
+
+        val expectedFriday = ZonedDateTime.of(2026, 4, 17, 9, 0, 0, 0, zoneId)
+            .toInstant()
+            .toEpochMilli()
+        val expectedSaturday = ZonedDateTime.of(2026, 4, 18, 9, 0, 0, 0, zoneId)
+            .toInstant()
+            .toEpochMilli()
+
+        assertEquals(
+            expectedFriday,
+            DateCycleUtils.computeReminderTriggerAtMillis(
+                semanaKey = "2026-W16",
+                deadline = TaskDeadline.SABADO,
+                nowMillis = mondayMorning,
+                timeZone = timeZone,
+            ),
+        )
+        assertEquals(
+            expectedSaturday,
+            DateCycleUtils.computeReminderTriggerAtMillis(
+                semanaKey = "2026-W16",
+                deadline = TaskDeadline.DOMINGO,
+                nowMillis = mondayMorning,
+                timeZone = timeZone,
+            ),
+        )
+    }
+
+    @Test
+    fun computeReminderTriggerAtMillisHandlesYearBoundaryAndIneligibleCases() {
+        val zoneId = ZoneId.of("America/Recife")
+        val timeZone = TimeZone.getTimeZone(zoneId)
+        val beforeYearStart = ZonedDateTime.of(2025, 12, 29, 10, 0, 0, 0, zoneId)
+            .toInstant()
+            .toEpochMilli()
+        val expectedJan2Friday = ZonedDateTime.of(2026, 1, 2, 9, 0, 0, 0, zoneId)
+            .toInstant()
+            .toEpochMilli()
+
+        assertEquals(
+            expectedJan2Friday,
+            DateCycleUtils.computeReminderTriggerAtMillis(
+                semanaKey = "2026-W01",
+                deadline = TaskDeadline.SABADO,
+                nowMillis = beforeYearStart,
+                timeZone = timeZone,
+            ),
+        )
+
+        val mondayW16 = ZonedDateTime.of(2026, 4, 13, 8, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+        val exactFriday9am = ZonedDateTime.of(2026, 4, 17, 9, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+        val afterFriday9am = exactFriday9am + 1_000L
+
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("2026-W16", TaskDeadline.HOJE, mondayW16, timeZone),
+        )
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("2026-W16", TaskDeadline.SEM_PRAZO, mondayW16, timeZone),
+        )
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("2026-W16", null, mondayW16, timeZone),
+        )
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("2026-W16", TaskDeadline.SABADO, exactFriday9am, timeZone),
+        )
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("2026-W16", TaskDeadline.SABADO, afterFriday9am, timeZone),
+        )
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("", TaskDeadline.SABADO, mondayW16, timeZone),
+        )
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("invalid", TaskDeadline.SABADO, mondayW16, timeZone),
+        )
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("2025-W53", TaskDeadline.SABADO, beforeYearStart, timeZone),
+        )
     }
 }

@@ -25,7 +25,7 @@ object GoogleAuthHelper {
         val credentialManager = CredentialManager.create(activityContext)
         val googleIdOption = GetGoogleIdOption.Builder()
             .setFilterByAuthorizedAccounts(false)
-            .setServerClientId(activityContext.getString(R.string.default_web_client_id))
+            .setServerClientId(resolveServerClientId(activityContext))
             .setAutoSelectEnabled(false)
             .build()
 
@@ -64,6 +64,20 @@ object GoogleAuthHelper {
     suspend fun clearCredentialState(context: Context) {
         runCatching {
             CredentialManager.create(context).clearCredentialState(ClearCredentialStateRequest())
+        }
+    }
+
+    @Suppress("DiscouragedApi")
+    private fun resolveServerClientId(context: Context): String {
+        val defaultResId = context.resources.getIdentifier(
+            "default_web_client_id",
+            "string",
+            context.packageName,
+        )
+        return if (defaultResId != 0) {
+            context.getString(defaultResId)
+        } else {
+            context.getString(R.string.google_web_client_id)
         }
     }
 }

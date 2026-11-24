@@ -47,10 +47,15 @@ import xavier.pedro.suavez.ui.state.TaskCategory
 import xavier.pedro.suavez.ui.state.TaskDeadline
 import xavier.pedro.suavez.ui.state.TaskFrequency
 import xavier.pedro.suavez.data.repository.AuthSession
+import xavier.pedro.suavez.notifications.ScheduledReminder
+import xavier.pedro.suavez.notifications.TaskReminderScheduler
 import xavier.pedro.suavez.ui.state.UiUser
 import xavier.pedro.suavez.ui.state.isHouseBalanced
 import xavier.pedro.suavez.ui.toMainShellUiModel
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.util.Locale
+import java.util.TimeZone
 
 private const val ADMIN_UID = "u_admin"
 private const val MEMBER_UID = "u_membro"
@@ -878,11 +883,384 @@ class SuaVezStateHolderTest {
             testScope.cancel()
         }
     }
+
+    @Test
+    fun claimingOpenTaskSchedulesEligibleDeadlinesAndIgnoresIneligibleOrPastOnes() = runBlocking {
+        val zoneId = ZoneId.of("America/Recife")
+        val timeZone = TimeZone.getTimeZone(zoneId)
+        val mondayW16 = ZonedDateTime.of(2026, 4, 13, 8, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+        val expectedFriday = ZonedDateTime.of(2026, 4, 17, 9, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+        val expectedSaturday = ZonedDateTime.of(2026, 4, 18, 9, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+        var currentNow = mondayW16
+
+        val fake = FakeSuaVezDataSource(initialWeekKey = "2026-W16")
+        val scheduler = FakeTaskReminderScheduler()
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(
+            dataSource = fake,
+            scope = testScope,
+            reminderScheduler = scheduler,
+            nowProvider = { currentNow },
+            timeZoneProvider = { timeZone },
+        )
+        try {
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
+            state.addWeeklyTask("Lavar banheiro", TaskCategory.LIMPEZA, 8, TaskDeadline.SABADO)
+            state.addWeeklyTask("Fazer feira", TaskCategory.COMPRAS, 5, TaskDeadline.DOMINGO)
+            state.addWeeklyTask("Tirar lixo", TaskCategory.LIMPEZA, 2, TaskDeadline.HOJE)
+            state.addWeeklyTask("Organizar armário", TaskCategory.OUTRAS, 2, TaskDeadline.SEM_PRAZO)
+
+            val byTitle = state.uiState.value.openAssignments.associateBy { it.titulo }
+            state.claimOpenTask(byTitle.getValue("Lavar banheiro").id)
+            state.claimOpenTask(byTitle.getValue("Fazer feira").id)
+            state.claimOpenTask(byTitle.getValue("Tirar lixo").id)
+            state.claimOpenTask(byTitle.getValue("Organizar armário").id)
+
+            assertEquals(2, scheduler.scheduled.size)
+            assertEquals(
+                ScheduledReminder(byTitle.getValue("Lavar banheiro").id, "Lavar banheiro", expectedFriday),
+                scheduler.scheduled[byTitle.getValue("Lavar banheiro").id],
+            )
+            assertEquals(
+                ScheduledReminder(byTitle.getValue("Fazer feira").id, "Fazer feira", expectedSaturday),
+                scheduler.scheduled[byTitle.getValue("Fazer feira").id],
+            )
+
+            // Com relógio após sexta 09:00, nova tarefa SABADO não deve ser agendada
+            currentNow = expectedFriday + 60_000L
+            state.addWeeklyTask("Lavar quintal", TaskCategory.LIMPEZA, 5, TaskDeadline.SABADO)
+            val lateId = state.uiState.value.openAssignments.first { it.titulo == "Lavar quintal" }.id
+            state.claimOpenTask(lateId)
+            assertNull(scheduler.scheduled[lateId])
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun greedyDistributionSchedulesRemindersOnlyForCurrentUser() = runBlocking {
+        val zoneId = ZoneId.of("America/Recife")
+        val timeZone = TimeZone.getTimeZone(zoneId)
+        val mondayW16 = ZonedDateTime.of(2026, 4, 13, 8, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+        val expectedFriday = ZonedDateTime.of(2026, 4, 17, 9, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+
+        val fake = FakeSuaVezDataSource(initialWeekKey = "2026-W16")
+        val scheduler = FakeTaskReminderScheduler()
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(
+            dataSource = fake,
+            scope = testScope,
+            reminderScheduler = scheduler,
+            nowProvider = { mondayW16 },
+            timeZoneProvider = { timeZone },
+        )
+        try {
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
+            state.addWeeklyTask("Tarefa pesada", TaskCategory.LIMPEZA, 8, TaskDeadline.SABADO)
+            state.addWeeklyTask("Tarefa média", TaskCategory.COMPRAS, 5, TaskDeadline.SABADO)
+
+            state.distributePendingTasks()
+
+            val myAssigned = state.uiState.value.assignments.filter { it.assigneeUid == ADMIN_UID }
+            val otherAssigned = state.uiState.value.assignments.filter { it.assigneeUid == MEMBER_UID }
+            assertEquals(1, myAssigned.size)
+            assertEquals(1, otherAssigned.size)
+            assertEquals(setOf(myAssigned.first().id), scheduler.scheduled.keys)
+            assertEquals(expectedFriday, scheduler.scheduled[myAssigned.first().id]?.triggerAtMillis)
+            assertFalse(scheduler.scheduled.containsKey(otherAssigned.first().id))
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun editingTitleOrDeadlineReschedulesOrCancelsAndDeletingCancels() = runBlocking {
+        val zoneId = ZoneId.of("America/Recife")
+        val timeZone = TimeZone.getTimeZone(zoneId)
+        val mondayW16 = ZonedDateTime.of(2026, 4, 13, 8, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+        val expectedFriday = ZonedDateTime.of(2026, 4, 17, 9, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+        val expectedSaturday = ZonedDateTime.of(2026, 4, 18, 9, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+
+        val fake = FakeSuaVezDataSource(initialWeekKey = "2026-W16")
+        val scheduler = FakeTaskReminderScheduler()
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(
+            dataSource = fake,
+            scope = testScope,
+            reminderScheduler = scheduler,
+            nowProvider = { mondayW16 },
+            timeZoneProvider = { timeZone },
+        )
+        try {
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
+            state.addWeeklyTask("Lavar banheiro", TaskCategory.LIMPEZA, 5, TaskDeadline.SABADO)
+            val id = state.uiState.value.openAssignments.single().id
+            state.claimOpenTask(id)
+            assertEquals(ScheduledReminder(id, "Lavar banheiro", expectedFriday), scheduler.scheduled[id])
+
+            state.updateWeeklyAssignment(id, "Lavar suíte", TaskCategory.LIMPEZA, 5, TaskDeadline.DOMINGO)
+            assertEquals(ScheduledReminder(id, "Lavar suíte", expectedSaturday), scheduler.scheduled[id])
+
+            state.updateWeeklyAssignment(id, "Lavar suíte", TaskCategory.LIMPEZA, 5, TaskDeadline.HOJE)
+            assertNull(scheduler.scheduled[id])
+            assertTrue(id in scheduler.cancelCalls)
+
+            state.updateWeeklyAssignment(id, "Lavar suíte", TaskCategory.LIMPEZA, 5, TaskDeadline.SABADO)
+            assertEquals(ScheduledReminder(id, "Lavar suíte", expectedFriday), scheduler.scheduled[id])
+
+            state.deleteWeeklyAssignment(id)
+            assertNull(scheduler.scheduled[id])
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun completingAndUndoingTaskCancelsAndReschedulesReminder() = runBlocking {
+        val zoneId = ZoneId.of("America/Recife")
+        val timeZone = TimeZone.getTimeZone(zoneId)
+        val mondayW16 = ZonedDateTime.of(2026, 4, 13, 8, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+        val expectedFriday = ZonedDateTime.of(2026, 4, 17, 9, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+
+        val fake = FakeSuaVezDataSource(initialWeekKey = "2026-W16")
+        val scheduler = FakeTaskReminderScheduler()
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(
+            dataSource = fake,
+            scope = testScope,
+            reminderScheduler = scheduler,
+            nowProvider = { mondayW16 },
+            timeZoneProvider = { timeZone },
+        )
+        try {
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
+            state.addWeeklyTask("Lavar banheiro", TaskCategory.LIMPEZA, 5, TaskDeadline.SABADO)
+            val id = state.uiState.value.openAssignments.single().id
+            state.claimOpenTask(id)
+            assertEquals(expectedFriday, scheduler.scheduled[id]?.triggerAtMillis)
+
+            state.toggleTaskDone(id)
+            assertNull(scheduler.scheduled[id])
+            assertTrue(id in scheduler.cancelCalls)
+
+            state.uiState.value.snackbar?.onAction?.invoke()
+            assertEquals(ScheduledReminder(id, "Lavar banheiro", expectedFriday), scheduler.scheduled[id])
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun unassigningAndWeekRolloverCancelPreviousRemindersAndScheduleNewWeek() = runBlocking {
+        val zoneId = ZoneId.of("America/Recife")
+        val timeZone = TimeZone.getTimeZone(zoneId)
+        val mondayW16 = ZonedDateTime.of(2026, 4, 13, 8, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+        val expectedFridayW17 = ZonedDateTime.of(2026, 4, 24, 9, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+
+        val fake = FakeSuaVezDataSource(initialWeekKey = "2026-W16")
+        val scheduler = FakeTaskReminderScheduler()
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(
+            dataSource = fake,
+            scope = testScope,
+            reminderScheduler = scheduler,
+            nowProvider = { mondayW16 },
+            timeZoneProvider = { timeZone },
+        )
+        try {
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
+            state.addWeeklyTask("Lavar banheiro", TaskCategory.LIMPEZA, 5, TaskDeadline.SABADO)
+            val w16Id = state.uiState.value.openAssignments.single().id
+            state.claimOpenTask(w16Id)
+            assertTrue(scheduler.scheduled.containsKey(w16Id))
+
+            fake.setAssignmentAssignee(TEST_HOUSE_ID, w16Id, null, null)
+            assertNull(scheduler.scheduled[w16Id])
+
+            state.claimOpenTask(w16Id)
+            assertTrue(scheduler.scheduled.containsKey(w16Id))
+
+            val w17Task = Assignment(
+                id = "2026-W17_task_t1",
+                semana = "2026-W17",
+                taskId = "t1",
+                titulo = "Passar pano",
+                peso = 5,
+                deadline = TaskDeadline.SABADO.name,
+                categoriaId = "limpeza",
+                categoriaNome = "Limpeza",
+                status = AssignmentStatus.ATRIBUIDA.name,
+                responsavelUid = ADMIN_UID,
+                responsavelNome = "Admin Teste",
+            )
+            fake.advanceHouseToWeek(TEST_HOUSE_ID, "2026-W17", listOf(w17Task))
+
+            assertNull(scheduler.scheduled[w16Id])
+            assertTrue(w16Id in scheduler.cancelCalls)
+            assertEquals(
+                ScheduledReminder(w17Task.id, "Passar pano", expectedFridayW17),
+                scheduler.scheduled[w17Task.id],
+            )
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun leaveDestroyAndSignOutCallCancelAllAndTriggerTestNotificationWorks() = runBlocking {
+        val zoneId = ZoneId.of("America/Recife")
+        val timeZone = TimeZone.getTimeZone(zoneId)
+        val mondayW16 = ZonedDateTime.of(2026, 4, 13, 8, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+
+        // Member leave + signOut
+        val fakeMember = FakeSuaVezDataSource(initialWeekKey = "2026-W16")
+        val schedulerMember = FakeTaskReminderScheduler()
+        val scopeMember = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val memberState = SuaVezStateHolder(
+            dataSource = fakeMember,
+            scope = scopeMember,
+            reminderScheduler = schedulerMember,
+            nowProvider = { mondayW16 },
+            timeZoneProvider = { timeZone },
+        )
+        try {
+            memberState.signInWithGoogleIdToken(MEMBER_TOKEN)
+            memberState.addWeeklyTask("Limpar fogão", TaskCategory.LIMPEZA, 5, TaskDeadline.SABADO)
+            val id = memberState.uiState.value.openAssignments.single().id
+            memberState.claimOpenTask(id)
+            assertEquals(1, schedulerMember.scheduled.size)
+
+            memberState.triggerTestNotification()
+            assertEquals(listOf("Limpar fogão"), schedulerMember.immediateTestTitles)
+            assertEquals("Notificação de teste disparada", memberState.uiState.value.snackbar?.message)
+
+            val callsBeforeLeave = schedulerMember.cancelAllCalls
+            memberState.leaveHouseAsMember()
+            assertTrue(schedulerMember.scheduled.isEmpty())
+            assertEquals(callsBeforeLeave + 1, schedulerMember.cancelAllCalls)
+
+            memberState.triggerTestNotification()
+            assertEquals(
+                listOf("Limpar fogão", TaskReminderScheduler.DEFAULT_TEST_TASK_TITLE),
+                schedulerMember.immediateTestTitles,
+            )
+
+            val callsBeforeSignOut = schedulerMember.cancelAllCalls
+            memberState.signOut()
+            assertEquals(callsBeforeSignOut + 1, schedulerMember.cancelAllCalls)
+        } finally {
+            scopeMember.cancel()
+        }
+
+        // Admin transferAdminAndLeave + destroyHouse
+        val fakeAdmin = FakeSuaVezDataSource(initialWeekKey = "2026-W16")
+        val schedulerAdmin = FakeTaskReminderScheduler()
+        val scopeAdmin = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val adminState = SuaVezStateHolder(
+            dataSource = fakeAdmin,
+            scope = scopeAdmin,
+            reminderScheduler = schedulerAdmin,
+            nowProvider = { mondayW16 },
+            timeZoneProvider = { timeZone },
+        )
+        try {
+            adminState.signInWithGoogleIdToken(ADMIN_TOKEN)
+            adminState.addWeeklyTask("Lavar banheiro", TaskCategory.LIMPEZA, 5, TaskDeadline.SABADO)
+            val id = adminState.uiState.value.openAssignments.single().id
+            adminState.claimOpenTask(id)
+            assertEquals(1, schedulerAdmin.scheduled.size)
+
+            val callsBeforeTransfer = schedulerAdmin.cancelAllCalls
+            adminState.transferAdminAndLeave(MEMBER_UID)
+            assertTrue(schedulerAdmin.scheduled.isEmpty())
+            assertEquals(callsBeforeTransfer + 1, schedulerAdmin.cancelAllCalls)
+
+            adminState.createHouse("Nova Casa")
+            val callsBeforeDestroy = schedulerAdmin.cancelAllCalls
+            adminState.destroyHouse()
+            assertEquals(callsBeforeDestroy + 1, schedulerAdmin.cancelAllCalls)
+        } finally {
+            scopeAdmin.cancel()
+        }
+    }
+
+    @Test
+    fun coldStartReconciliationClearsStalePersistedReminders() = runBlocking {
+        val zoneId = ZoneId.of("America/Recife")
+        val timeZone = TimeZone.getTimeZone(zoneId)
+        val mondayW16 = ZonedDateTime.of(2026, 4, 13, 8, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+        val expectedFridayW16 = ZonedDateTime.of(2026, 4, 17, 9, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+
+        val fake = FakeSuaVezDataSource(initialActiveUid = ADMIN_UID, initialWeekKey = "2026-W16")
+        val activeTask = fake.addWeeklyTask(
+            houseId = TEST_HOUSE_ID,
+            title = "Lavar banheiro",
+            category = TaskCategory.LIMPEZA,
+            points = 5,
+            deadline = TaskDeadline.SABADO,
+            createdByUid = ADMIN_UID,
+            semana = "2026-W16",
+        ).getOrThrow()
+        fake.setAssignmentAssignee(TEST_HOUSE_ID, activeTask.id, ADMIN_UID, "Admin Teste")
+
+        val scheduler = FakeTaskReminderScheduler().apply {
+            scheduled["stale_w15_task"] = ScheduledReminder("stale_w15_task", "Antiga", mondayW16 + 1_000L)
+        }
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(
+            dataSource = fake,
+            scope = testScope,
+            reminderScheduler = scheduler,
+            nowProvider = { mondayW16 },
+            timeZoneProvider = { timeZone },
+        )
+        try {
+            state.restoreSession()
+
+            assertNull(scheduler.scheduled["stale_w15_task"])
+            assertEquals(1, scheduler.cancelAllCalls)
+            assertEquals(
+                mapOf(activeTask.id to ScheduledReminder(activeTask.id, "Lavar banheiro", expectedFridayW16)),
+                scheduler.scheduled,
+            )
+        } finally {
+            testScope.cancel()
+        }
+    }
+}
+
+private class FakeTaskReminderScheduler : TaskReminderScheduler {
+    val scheduled = linkedMapOf<String, ScheduledReminder>()
+    val scheduleCalls = mutableListOf<ScheduledReminder>()
+    val cancelCalls = mutableListOf<String>()
+    var cancelAllCalls: Int = 0
+    val immediateTestTitles = mutableListOf<String>()
+
+    override fun scheduleOrReplace(assignmentId: String, taskTitle: String, triggerAtMillis: Long) {
+        val reminder = ScheduledReminder(assignmentId, taskTitle, triggerAtMillis)
+        scheduled[assignmentId] = reminder
+        scheduleCalls += reminder
+    }
+
+    override fun cancel(assignmentId: String) {
+        scheduled.remove(assignmentId)
+        cancelCalls += assignmentId
+    }
+
+    override fun cancelAll() {
+        scheduled.clear()
+        cancelAllCalls += 1
+    }
+
+    override fun triggerImmediateTestNotification(taskTitle: String) {
+        immediateTestTitles += taskTitle
+    }
 }
 
 private class FakeSuaVezDataSource(
     startWithoutHouse: Boolean = false,
     initialActiveUid: String? = null,
+    initialWeekKey: String = DateCycleUtils.currentIsoWeekKey(),
 ) : SuaVezDataSource {
     var nextSignInError: Throwable? = null
     var nextPreferenceError: Throwable? = null
@@ -895,7 +1273,7 @@ private class FakeSuaVezDataSource(
     var ensureCurrentWeekCompleted: Boolean = false
     private var idSeq = 1
     private val monthKey = DateCycleUtils.currentMonthKey()
-    private val weekKey = DateCycleUtils.currentIsoWeekKey()
+    private var weekKey = initialWeekKey
 
     private val users = mutableMapOf<String, User>()
     private val houses = MutableStateFlow<Map<String, House>>(emptyMap())
@@ -1368,5 +1746,43 @@ private class FakeSuaVezDataSource(
         }
         assignmentsByHouse.value = assignmentsByHouse.value + (houseId to updated)
         decisions
+    }
+
+    fun setAssignmentAssignee(
+        houseId: String,
+        assignmentId: String,
+        assigneeUid: String?,
+        assigneeName: String?,
+    ) {
+        val updated = assignmentsByHouse.value[houseId].orEmpty().map { item ->
+            if (item.id == assignmentId) {
+                item.copy(
+                    responsavelUid = assigneeUid,
+                    responsavelNome = assigneeName,
+                    status = if (assigneeUid == null) {
+                        AssignmentStatus.PENDENTE.name
+                    } else {
+                        AssignmentStatus.ATRIBUIDA.name
+                    },
+                )
+            } else {
+                item
+            }
+        }
+        assignmentsByHouse.value = assignmentsByHouse.value + (houseId to updated)
+    }
+
+    fun advanceHouseToWeek(
+        houseId: String,
+        newWeekKey: String,
+        newAssignments: List<Assignment> = emptyList(),
+    ) {
+        weekKey = newWeekKey
+        houses.value[houseId]?.let { house ->
+            houses.value = houses.value + (houseId to house.copy(semanaAtual = newWeekKey))
+        }
+        assignmentsByHouse.value = assignmentsByHouse.value + (
+            houseId to (assignmentsByHouse.value[houseId].orEmpty() + newAssignments)
+        )
     }
 }

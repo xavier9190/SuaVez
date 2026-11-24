@@ -18,11 +18,16 @@ import xavier.pedro.suavez.data.repository.AuthSession
 import xavier.pedro.suavez.data.repository.DateCycleUtils
 import xavier.pedro.suavez.data.repository.SuaVezDataSource
 import xavier.pedro.suavez.data.repository.toFirestoreUser
+import xavier.pedro.suavez.data.repository.toTaskDeadline
 import xavier.pedro.suavez.data.repository.toUiAssignment
 import xavier.pedro.suavez.data.repository.toUiHouse
 import xavier.pedro.suavez.data.repository.toUiMember
 import xavier.pedro.suavez.data.repository.toUiRecurringTask
 import xavier.pedro.suavez.data.repository.toUiUser
+import xavier.pedro.suavez.notifications.NoOpTaskReminderScheduler
+import xavier.pedro.suavez.notifications.ScheduledReminder
+import xavier.pedro.suavez.notifications.TaskReminderScheduler
+import java.util.TimeZone
 
 data class SnackbarFeedback(
     val id: Long = System.nanoTime(),
@@ -34,6 +39,9 @@ data class SnackbarFeedback(
 class SuaVezStateHolder(
     private val dataSource: SuaVezDataSource,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+    private val reminderScheduler: TaskReminderScheduler = NoOpTaskReminderScheduler,
+    private val nowProvider: () -> Long = System::currentTimeMillis,
+    private val timeZoneProvider: () -> TimeZone = TimeZone::getDefault,
 ) {
 
     private val _uiState = MutableStateFlow(SuaVezUiState())
@@ -46,6 +54,8 @@ class SuaVezStateHolder(
     private var currentWeekKey: String = DateCycleUtils.currentIsoWeekKey()
     private var lastToggledAssignmentId: String? = null
     private val claimedInSessionIds = mutableSetOf<String>()
+    private val scheduledReminders = mutableMapOf<String, ScheduledReminder>()
+    private var hasReconciledCurrentSession: Boolean = false
 
     private var houseObservationJob: Job? = null
     private var weekAssignmentsJob: Job? = null
@@ -168,9 +178,11 @@ class SuaVezStateHolder(
     private suspend fun applySession(session: AuthSession) {
         rawAssignments = emptyList()
         claimedInSessionIds.clear()
+        hasReconciledCurrentSession = false
         val house = session.house
         if (house == null) {
             stopObservingHouse()
+            cancelAllReminders()
             _uiState.update { current ->
                 current.copy(
                     currentUser = session.user.toUiUser(),
@@ -198,6 +210,7 @@ class SuaVezStateHolder(
 
     fun signOut() {
         stopObservingHouse()
+        cancelAllReminders()
         rawAssignments = emptyList()
         claimedInSessionIds.clear()
         sessionRestoreAttempted = false
@@ -332,6 +345,7 @@ class SuaVezStateHolder(
                             },
                         )
                     }
+                    reconcileReminders(list, weekKey)
                 }
         }
     }
@@ -621,6 +635,7 @@ class SuaVezStateHolder(
 
     private fun clearHouseForCurrentUser(feedback: String) {
         stopObservingHouse()
+        cancelAllReminders()
         rawAssignments = emptyList()
         claimedInSessionIds.clear()
         _uiState.update { current ->
@@ -634,6 +649,71 @@ class SuaVezStateHolder(
             )
         }
         showMessage(feedback)
+    }
+
+    fun triggerTestNotification() {
+        val sampleTitle = state.myAssignments.firstOrNull { !it.isDone }?.titulo
+            ?: state.myAssignments.firstOrNull()?.titulo
+            ?: TaskReminderScheduler.DEFAULT_TEST_TASK_TITLE
+        reminderScheduler.triggerImmediateTestNotification(sampleTitle)
+        showMessage("Notificação de teste disparada")
+    }
+
+    private fun reconcileReminders(assignments: List<Assignment>, weekKey: String) {
+        val currentUid = state.currentUser?.uid
+        if (currentUid == null || state.currentHouse == null) {
+            cancelAllReminders()
+            return
+        }
+
+        if (!hasReconciledCurrentSession) {
+            scheduledReminders.clear()
+            reminderScheduler.cancelAll()
+            hasReconciledCurrentSession = true
+        }
+
+        val nowMillis = nowProvider()
+        val timeZone = timeZoneProvider()
+        val desiredById = LinkedHashMap<String, ScheduledReminder>()
+
+        for (assignment in assignments) {
+            if (assignment.responsavelUid != currentUid || assignment.isConcluida()) continue
+            val deadline = assignment.deadline.toTaskDeadline()
+            val triggerAtMillis = DateCycleUtils.computeReminderTriggerAtMillis(
+                semanaKey = weekKey,
+                deadline = deadline,
+                nowMillis = nowMillis,
+                timeZone = timeZone,
+            ) ?: continue
+            desiredById[assignment.id] = ScheduledReminder(
+                assignmentId = assignment.id,
+                taskTitle = assignment.titulo,
+                triggerAtMillis = triggerAtMillis,
+            )
+        }
+
+        val toCancel = scheduledReminders.keys.filter { it !in desiredById }
+        for (assignmentId in toCancel) {
+            reminderScheduler.cancel(assignmentId)
+            scheduledReminders.remove(assignmentId)
+        }
+
+        for ((assignmentId, desired) in desiredById) {
+            if (scheduledReminders[assignmentId] != desired) {
+                reminderScheduler.scheduleOrReplace(
+                    assignmentId = assignmentId,
+                    taskTitle = desired.taskTitle,
+                    triggerAtMillis = desired.triggerAtMillis,
+                )
+                scheduledReminders[assignmentId] = desired
+            }
+        }
+    }
+
+    private fun cancelAllReminders() {
+        scheduledReminders.clear()
+        hasReconciledCurrentSession = false
+        reminderScheduler.cancelAll()
     }
 
     fun notifyMessage(message: String) {
