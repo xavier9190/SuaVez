@@ -1,10 +1,14 @@
 package xavier.pedro.suavez
 
+import android.Manifest
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -17,9 +21,12 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.navOptions
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
 import xavier.pedro.suavez.databinding.ActivityMainBinding
+import xavier.pedro.suavez.notifications.NotificationPermissionPrefs
+import xavier.pedro.suavez.notifications.TaskDeadlineNotifications
 import xavier.pedro.suavez.ui.MainShellDestination
 import xavier.pedro.suavez.ui.MainShellUiModel
 import xavier.pedro.suavez.ui.bindSuaVezAvatar
@@ -42,6 +49,14 @@ class MainActivity : AppCompatActivity() {
     private var previousHasHouse: Boolean? = null
     private var lastShownSnackbarId: Long? = null
     private var currentSnackbar: Snackbar? = null
+    private var notificationRationaleDialog: AlertDialog? = null
+    private var isShowingNotificationRationale: Boolean = false
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {
+        // Fallback gracioso: se recusada, o app continua normalmente sem notificações.
+    }
 
     private val backPressedCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
@@ -61,6 +76,10 @@ class MainActivity : AppCompatActivity() {
 
         setupInsets()
         setupNavigation()
+        handleDeepLinkIntent(intent)
+        if (savedInstanceState?.getBoolean(STATE_SHOWING_NOTIFICATION_RATIONALE, false) == true) {
+            maybeShowNotificationPermissionRationale()
+        }
         onBackPressedDispatcher.addCallback(this, backPressedCallback)
 
         lifecycleScope.launch {
@@ -71,6 +90,11 @@ class MainActivity : AppCompatActivity() {
                         return@collect
                     }
 
+                    if (state.shouldPromptNotificationPermission) {
+                        sharedViewModel.stateHolder.consumeNotificationPermissionPrompt()
+                        maybeShowNotificationPermissionRationale()
+                    }
+
                     val shell = state.toMainShellUiModel()
                     renderTopBar(shell)
                     renderBottomNavigation(shell)
@@ -79,6 +103,27 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleDeepLinkIntent(intent)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(
+            STATE_SHOWING_NOTIFICATION_RATIONALE,
+            isShowingNotificationRationale || notificationRationaleDialog?.isShowing == true,
+        )
+    }
+
+    override fun onDestroy() {
+        notificationRationaleDialog?.setOnDismissListener(null)
+        notificationRationaleDialog?.dismiss()
+        notificationRationaleDialog = null
+        super.onDestroy()
     }
 
     private fun setupInsets() {
@@ -265,13 +310,58 @@ class MainActivity : AppCompatActivity() {
         snackbar.show()
     }
 
+    private fun handleDeepLinkIntent(incomingIntent: Intent?) {
+        if (!TaskDeadlineNotifications.isTasksDeepLink(incomingIntent)) return
+        if (sharedViewModel.uiState.value.currentUser == null) return
+
+        val assignmentId = TaskDeadlineNotifications.extractHighlightAssignmentId(incomingIntent)
+        sharedViewModel.stateHolder.handleTaskDeepLink(assignmentId)
+        TaskDeadlineNotifications.clearDeepLinkExtras(incomingIntent)
+        syncNavigationDestination(sharedViewModel.uiState.value.toMainShellUiModel())
+    }
+
+    private fun maybeShowNotificationPermissionRationale() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (TaskDeadlineNotifications.hasNotificationPermission(this)) return
+        if (NotificationPermissionPrefs.hasPrompted(this)) return
+        if (notificationRationaleDialog?.isShowing == true) return
+
+        isShowingNotificationRationale = true
+        notificationRationaleDialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.dialog_notification_permission_title)
+            .setMessage(R.string.dialog_notification_permission_message)
+            .setPositiveButton(R.string.action_enable_notifications) { _, _ ->
+                NotificationPermissionPrefs.markPrompted(this)
+                isShowingNotificationRationale = false
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            .setNegativeButton(R.string.action_not_now) { _, _ ->
+                NotificationPermissionPrefs.markPrompted(this)
+                isShowingNotificationRationale = false
+            }
+            .setOnCancelListener {
+                NotificationPermissionPrefs.markPrompted(this)
+                isShowingNotificationRationale = false
+            }
+            .setOnDismissListener {
+                notificationRationaleDialog = null
+                isShowingNotificationRationale = false
+            }
+            .show()
+    }
+
     private fun navigateToLogin() {
         if (navigatedToLogin) return
         navigatedToLogin = true
-        val intent = Intent(this, LoginActivity::class.java).apply {
+        val loginIntent = Intent(this, LoginActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
-        startActivity(intent)
+        TaskDeadlineNotifications.copyDeepLinkExtras(intent, loginIntent)
+        startActivity(loginIntent)
         finish()
+    }
+
+    private companion object {
+        const val STATE_SHOWING_NOTIFICATION_RATIONALE = "state_showing_notification_rationale"
     }
 }

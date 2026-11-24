@@ -3,13 +3,11 @@ package xavier.pedro.suavez.notifications
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.google.firebase.auth.FirebaseAuth
-import xavier.pedro.suavez.LoginActivity
 import xavier.pedro.suavez.R
 
 class TaskDeadlineReminderWorker(
@@ -41,9 +39,10 @@ class TaskDeadlineReminderWorker(
             TaskDeadlineNotifications.notificationIdFor(assignmentId)
         }
 
-        val launchIntent = Intent(applicationContext, LoginActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
+        val launchIntent = TaskDeadlineNotifications.createDeepLinkIntent(
+            context = applicationContext,
+            assignmentId = assignmentId.takeIf { it.isNotBlank() },
+        )
         val pendingIntent = PendingIntent.getActivity(
             applicationContext,
             notificationId,

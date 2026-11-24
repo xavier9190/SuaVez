@@ -60,6 +60,9 @@ class SuaVezStateHolder(
     private var houseObservationJob: Job? = null
     private var weekAssignmentsJob: Job? = null
     private var sessionRestoreAttempted: Boolean = false
+    private var pendingDeepLink: PendingDeepLink? = null
+
+    private data class PendingDeepLink(val assignmentId: String?)
 
     // --- Navegação ---
 
@@ -183,6 +186,7 @@ class SuaVezStateHolder(
         if (house == null) {
             stopObservingHouse()
             cancelAllReminders()
+            pendingDeepLink = null
             _uiState.update { current ->
                 current.copy(
                     currentUser = session.user.toUiUser(),
@@ -193,6 +197,8 @@ class SuaVezStateHolder(
                     activeTab = MainTab.HOUSE,
                     destination = AppDestination.NoHouse,
                     snackbar = null,
+                    highlightedAssignmentId = null,
+                    shouldPromptNotificationPermission = false,
                 )
             }
         } else {
@@ -214,6 +220,7 @@ class SuaVezStateHolder(
         rawAssignments = emptyList()
         claimedInSessionIds.clear()
         sessionRestoreAttempted = false
+        pendingDeepLink = null
         _uiState.update { current ->
             current.copy(
                 currentUser = null,
@@ -224,6 +231,8 @@ class SuaVezStateHolder(
                 activeTab = MainTab.TASKS,
                 destination = AppDestination.Login,
                 snackbar = null,
+                highlightedAssignmentId = null,
+                shouldPromptNotificationPermission = false,
             )
         }
         scope.launch {
@@ -260,6 +269,8 @@ class SuaVezStateHolder(
     private suspend fun enterHouseSession(house: House, initialMembers: List<Member>) {
         val initialWeek = house.semanaAtual.ifBlank { DateCycleUtils.currentIsoWeekKey() }
         currentWeekKey = initialWeek
+        val resolvedDeepLink = pendingDeepLink
+        pendingDeepLink = null
         _uiState.update { current ->
             current.copy(
                 currentHouse = house.toUiHouse(),
@@ -270,6 +281,7 @@ class SuaVezStateHolder(
                 },
                 activeTab = MainTab.TASKS,
                 destination = AppDestination.Main,
+                highlightedAssignmentId = resolvedDeepLink?.assignmentId ?: current.highlightedAssignmentId,
             )
         }
 
@@ -410,6 +422,7 @@ class SuaVezStateHolder(
                         "\"${task.titulo}\" adicionada às suas tarefas"
                     }
                     showMessage(msg)
+                    requestNotificationPermissionPromptIfEligible(task.deadline)
                 }
                 .onFailure {
                     claimedInSessionIds.remove(assignmentId)
@@ -438,6 +451,7 @@ class SuaVezStateHolder(
                 semana = currentWeekKey,
             ).onSuccess { created ->
                 showMessage("Tarefa \"${created.titulo}\" adicionada")
+                requestNotificationPermissionPromptIfEligible(deadline)
             }.onFailure { showError("Erro ao adicionar tarefa", it) }
         }
     }
@@ -541,7 +555,15 @@ class SuaVezStateHolder(
             ).onSuccess {
                 when {
                     editingId != null -> showMessage("Alterações salvas")
-                    openInCurrentWeek -> showMessage("Atividade recorrente \"$cleanTitle\" criada e aberta na semana")
+                    openInCurrentWeek -> {
+                        showMessage("Atividade recorrente \"$cleanTitle\" criada e aberta na semana")
+                        val effectiveDeadline = deadline ?: if (frequency == TaskFrequency.DIARIA) {
+                            TaskDeadline.HOJE
+                        } else {
+                            TaskDeadline.DOMINGO
+                        }
+                        requestNotificationPermissionPromptIfEligible(effectiveDeadline)
+                    }
                     else -> showMessage("Atividade recorrente \"$cleanTitle\" criada")
                 }
             }.onFailure { showError("Erro ao salvar atividade recorrente", it) }
@@ -638,6 +660,7 @@ class SuaVezStateHolder(
         cancelAllReminders()
         rawAssignments = emptyList()
         claimedInSessionIds.clear()
+        pendingDeepLink = null
         _uiState.update { current ->
             current.copy(
                 currentHouse = null,
@@ -646,9 +669,55 @@ class SuaVezStateHolder(
                 assignments = emptyList(),
                 activeTab = MainTab.HOUSE,
                 destination = AppDestination.NoHouse,
+                highlightedAssignmentId = null,
+                shouldPromptNotificationPermission = false,
             )
         }
         showMessage(feedback)
+    }
+
+    fun consumeNotificationPermissionPrompt() {
+        _uiState.update { it.copy(shouldPromptNotificationPermission = false) }
+    }
+
+    fun handleTaskDeepLink(assignmentId: String?) {
+        val cleanId = assignmentId?.takeIf { it.isNotBlank() }
+        val current = state
+        if (current.currentUser == null) {
+            pendingDeepLink = PendingDeepLink(cleanId)
+            return
+        }
+        if (current.currentHouse == null) {
+            pendingDeepLink = null
+            return
+        }
+        pendingDeepLink = null
+        _uiState.update {
+            it.copy(
+                activeTab = MainTab.TASKS,
+                destination = AppDestination.Main,
+                highlightedAssignmentId = cleanId,
+            )
+        }
+    }
+
+    fun clearHighlightedAssignment(assignmentId: String? = null) {
+        _uiState.update { current ->
+            if (assignmentId == null || current.highlightedAssignmentId == assignmentId) {
+                current.copy(highlightedAssignmentId = null)
+            } else {
+                current
+            }
+        }
+    }
+
+    private fun TaskDeadline?.isReminderEligible(): Boolean =
+        this == TaskDeadline.SABADO || this == TaskDeadline.DOMINGO
+
+    private fun requestNotificationPermissionPromptIfEligible(deadline: TaskDeadline?) {
+        if (deadline.isReminderEligible()) {
+            _uiState.update { it.copy(shouldPromptNotificationPermission = true) }
+        }
     }
 
     fun triggerTestNotification() {

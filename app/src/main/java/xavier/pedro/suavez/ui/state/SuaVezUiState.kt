@@ -17,6 +17,8 @@ data class SuaVezUiState(
     val recurringTasks: List<UiRecurringTask> = emptyList(),
     val assignments: List<UiAssignment> = emptyList(),
     val snackbar: SnackbarFeedback? = null,
+    val highlightedAssignmentId: String? = null,
+    val shouldPromptNotificationPermission: Boolean = false,
 ) {
     val currentMember: UiMember?
         get() = currentUser?.let { user -> members.firstOrNull { it.uid == user.uid } }
