@@ -21,7 +21,9 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import xavier.pedro.suavez.R
+import xavier.pedro.suavez.auth.GoogleAuthHelper
 import xavier.pedro.suavez.databinding.DialogDestroyHouseBinding
 import xavier.pedro.suavez.databinding.DialogRenameHouseBinding
 import xavier.pedro.suavez.databinding.DialogTransferAdminBinding
@@ -102,7 +104,18 @@ class ProfileFragment : Fragment() {
         }
 
         binding.btnSignOut.setOnClickListener {
-            sharedViewModel.stateHolder.signOut()
+            binding.btnSignOut.isEnabled = false
+            val appContext = requireContext().applicationContext
+            viewLifecycleOwner.lifecycleScope.launch {
+                try {
+                    withContext(kotlinx.coroutines.NonCancellable) {
+                        GoogleAuthHelper.clearCredentialState(appContext)
+                        sharedViewModel.stateHolder.signOut()
+                    }
+                } finally {
+                    _binding?.btnSignOut?.isEnabled = true
+                }
+            }
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
@@ -118,7 +131,13 @@ class ProfileFragment : Fragment() {
     private fun renderProfileUi(model: ProfileUiModel) {
         latestModel = model
 
-        binding.tvProfileAvatar.bindSuaVezAvatar(model.user.nome, model.user.uid)
+        bindSuaVezAvatar(
+            photoView = binding.ivProfileAvatar,
+            initialsView = binding.tvProfileAvatar,
+            name = model.user.nome,
+            idForColor = model.user.uid,
+            fotoUrl = model.user.fotoUrl,
+        )
         binding.tvProfileName.text = model.user.nome
         binding.tvProfileEmail.text = model.user.email
         binding.tvProfileEmail.isVisible = model.user.email.isNotBlank()

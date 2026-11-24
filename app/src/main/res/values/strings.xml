@@ -12,11 +12,13 @@
     <string name="cd_suavez_logo">Logo Sua Vez</string>
 
     <!-- Login -->
-    <string name="login_test_profiles_overline">PERFIS DE TESTE</string>
-    <string name="login_test_profiles_desc">Escolha um perfil para entrar na casa compartilhada e validar a persistência no Firestore.</string>
-    <string name="login_as_admin">Entrar como Admin</string>
-    <string name="login_as_member">Entrar como Membro</string>
+    <string name="login_welcome_overline">BEM-VINDO AO SUA VEZ</string>
+    <string name="login_welcome_desc">Organize as tarefas da casa de forma justa entre todos os moradores.</string>
+    <string name="login_with_google">Entrar com Google</string>
     <string name="login_loading">Entrando…</string>
+    <string name="login_cancelled">Login cancelado.</string>
+    <string name="login_no_google_account">Nenhuma conta Google encontrada neste aparelho.</string>
+    <string name="login_google_error">Não foi possível entrar com sua conta Google.</string>
 
     <!-- Sem casa e Criar casa -->
     <string name="no_house_title">Sua casa</string>

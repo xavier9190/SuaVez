@@ -12,10 +12,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import xavier.pedro.suavez.data.model.Assignment
 import xavier.pedro.suavez.data.model.House
-import xavier.pedro.suavez.data.model.HouseRole
 import xavier.pedro.suavez.data.model.Member
 import xavier.pedro.suavez.data.model.PreferenceLevel
-import xavier.pedro.suavez.data.model.User
+import xavier.pedro.suavez.data.repository.AuthSession
 import xavier.pedro.suavez.data.repository.DateCycleUtils
 import xavier.pedro.suavez.data.repository.SuaVezDataSource
 import xavier.pedro.suavez.data.repository.toFirestoreUser
@@ -24,36 +23,6 @@ import xavier.pedro.suavez.data.repository.toUiHouse
 import xavier.pedro.suavez.data.repository.toUiMember
 import xavier.pedro.suavez.data.repository.toUiRecurringTask
 import xavier.pedro.suavez.data.repository.toUiUser
-
-/**
- * Perfis padrão fixos de teste usados na tela inicial para validar a persistência
- * no Cloud Firestore antes da integração com Firebase Auth (Etapa 3).
- */
-enum class TestProfile(
-    val uid: String,
-    val nome: String,
-    val email: String,
-    val role: HouseRole,
-) {
-    ADMIN(
-        uid = "u_admin",
-        nome = "Admin (Teste)",
-        email = "admin@suavez.app",
-        role = HouseRole.ADMIN,
-    ),
-    MEMBER(
-        uid = "u_membro",
-        nome = "Membro (Teste)",
-        email = "membro@suavez.app",
-        role = HouseRole.MEMBER,
-    ),
-}
-
-data class TestProfileSession(
-    val user: User,
-    val house: House?,
-    val members: List<Member>,
-)
 
 data class SnackbarFeedback(
     val id: Long = System.nanoTime(),
@@ -80,6 +49,7 @@ class SuaVezStateHolder(
 
     private var houseObservationJob: Job? = null
     private var weekAssignmentsJob: Job? = null
+    private var sessionRestoreAttempted: Boolean = false
 
     // --- Navegação ---
 
@@ -142,54 +112,87 @@ class SuaVezStateHolder(
         return handled
     }
 
-    // --- Autenticação (perfis padrão de teste) ---
+    // --- Autenticação (Google + Firebase Auth) ---
 
-    fun startSignIn(profile: TestProfile) {
-        if (_uiState.value.isAuthenticating) return
+    fun restoreSessionIfNeeded() {
+        if (sessionRestoreAttempted || _uiState.value.currentUser != null || _uiState.value.isAuthenticating) return
+        sessionRestoreAttempted = true
         scope.launch {
-            signInAs(profile)
+            restoreSession()
         }
     }
 
-    suspend fun signInAs(profile: TestProfile) {
+    suspend fun restoreSession() {
         _uiState.update { it.copy(isAuthenticating = true, snackbar = null) }
         try {
-            dataSource.loadOrBootstrapTestProfile(profile)
+            dataSource.restoreSession()
                 .onSuccess { session ->
-                    rawAssignments = emptyList()
-                    claimedInSessionIds.clear()
-                    val house = session.house
-                    if (house == null) {
-                        stopObservingHouse()
-                        _uiState.update { current ->
-                            current.copy(
-                                currentUser = session.user.toUiUser(),
-                                currentHouse = null,
-                                members = emptyList(),
-                                recurringTasks = emptyList(),
-                                assignments = emptyList(),
-                                activeTab = MainTab.HOUSE,
-                                destination = AppDestination.NoHouse,
-                                snackbar = null,
-                            )
-                        }
-                    } else {
-                        _uiState.update { current ->
-                            current.copy(
-                                currentUser = session.user.toUiUser(),
-                                recurringTasks = emptyList(),
-                                assignments = emptyList(),
-                                snackbar = null,
-                            )
-                        }
-                        enterHouseSession(house, session.members)
+                    if (session != null) {
+                        applySession(session)
                     }
                 }
                 .onFailure { error ->
-                    showError("Erro ao entrar", error)
+                    showError("Erro ao restaurar sessão", error)
                 }
         } finally {
             _uiState.update { it.copy(isAuthenticating = false) }
+        }
+    }
+
+    fun startGoogleSignIn(idToken: String) {
+        if (_uiState.value.isAuthenticating) return
+        scope.launch {
+            signInWithGoogleIdToken(idToken)
+        }
+    }
+
+    suspend fun signInWithGoogleIdToken(idToken: String) {
+        _uiState.update { it.copy(isAuthenticating = true, snackbar = null) }
+        try {
+            dataSource.signInWithGoogleIdToken(idToken)
+                .onSuccess { session ->
+                    applySession(session)
+                }
+                .onFailure { error ->
+                    showError("Erro ao entrar com Google", error)
+                }
+        } finally {
+            _uiState.update { it.copy(isAuthenticating = false) }
+        }
+    }
+
+    fun reportAuthError(message: String) {
+        showMessage(message)
+    }
+
+    private suspend fun applySession(session: AuthSession) {
+        rawAssignments = emptyList()
+        claimedInSessionIds.clear()
+        val house = session.house
+        if (house == null) {
+            stopObservingHouse()
+            _uiState.update { current ->
+                current.copy(
+                    currentUser = session.user.toUiUser(),
+                    currentHouse = null,
+                    members = emptyList(),
+                    recurringTasks = emptyList(),
+                    assignments = emptyList(),
+                    activeTab = MainTab.HOUSE,
+                    destination = AppDestination.NoHouse,
+                    snackbar = null,
+                )
+            }
+        } else {
+            _uiState.update { current ->
+                current.copy(
+                    currentUser = session.user.toUiUser(),
+                    recurringTasks = emptyList(),
+                    assignments = emptyList(),
+                    snackbar = null,
+                )
+            }
+            enterHouseSession(house, session.members)
         }
     }
 
@@ -197,6 +200,7 @@ class SuaVezStateHolder(
         stopObservingHouse()
         rawAssignments = emptyList()
         claimedInSessionIds.clear()
+        sessionRestoreAttempted = false
         _uiState.update { current ->
             current.copy(
                 currentUser = null,
@@ -208,6 +212,9 @@ class SuaVezStateHolder(
                 destination = AppDestination.Login,
                 snackbar = null,
             )
+        }
+        scope.launch {
+            dataSource.signOut()
         }
     }
 

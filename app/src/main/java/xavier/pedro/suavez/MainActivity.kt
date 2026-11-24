@@ -116,7 +116,7 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
-        binding.tvTopAvatar.setOnClickListener {
+        binding.flTopAvatar.setOnClickListener {
             sharedViewModel.stateHolder.selectTab(MainTab.PROFILE)
         }
 
@@ -147,9 +147,15 @@ class MainActivity : AppCompatActivity() {
         binding.tvHouseName.text = houseTitle.orEmpty()
 
         val avatarUser = shell.avatarUser
-        binding.tvTopAvatar.isVisible = avatarUser != null
+        binding.flTopAvatar.isVisible = avatarUser != null
         if (avatarUser != null) {
-            binding.tvTopAvatar.bindSuaVezAvatar(avatarUser.nome, avatarUser.uid)
+            bindSuaVezAvatar(
+                photoView = binding.ivTopAvatar,
+                initialsView = binding.tvTopAvatar,
+                name = avatarUser.nome,
+                idForColor = avatarUser.uid,
+                fotoUrl = avatarUser.fotoUrl,
+            )
         }
     }
 

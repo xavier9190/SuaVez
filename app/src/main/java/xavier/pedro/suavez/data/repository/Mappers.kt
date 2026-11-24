@@ -119,11 +119,12 @@ fun User.toUiUser(): UiUser = UiUser(
     uid = uid,
     nome = nome,
     email = email,
+    fotoUrl = fotoUrl,
 )
 
 fun UiUser.toFirestoreUser(
     currentHouseId: String? = null,
-    fotoUrl: String? = null,
+    fotoUrl: String? = this.fotoUrl,
 ): User = User(
     uid = uid,
     nome = nome,
