@@ -4,7 +4,9 @@
     <color name="verde_casa">#0E8C7F</color>
     <color name="verde_fundo">#0A6B61</color>
     <color name="nevoa">#E3F1EE</color>
+    <color name="admin_chip_stroke">#470E8C7F</color>
     <color name="ambar_vez">#F5A524</color>
+    <color name="ambar_vez_claro">#FBC66B</color>
     <color name="ambar_vez_suave">#FEF1D8</color>
     <color name="ambar_vez_texto">#8A5A00</color>
     <color name="ambar_traco">#B97800</color>

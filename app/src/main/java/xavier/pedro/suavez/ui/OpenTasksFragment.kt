@@ -21,7 +21,6 @@ import xavier.pedro.suavez.databinding.FragmentOpenTasksBinding
 import xavier.pedro.suavez.databinding.ItemOpenTaskCardBinding
 import xavier.pedro.suavez.ui.state.SuaVezSharedViewModel
 import xavier.pedro.suavez.ui.state.SuaVezUiState
-import xavier.pedro.suavez.ui.state.TaskIconHint
 import xavier.pedro.suavez.ui.state.UiAssignment
 
 class OpenTasksFragment : Fragment() {
@@ -99,7 +98,7 @@ class OpenTasksFragment : Fragment() {
             cardBinding.flIconCircle,
             ColorStateList.valueOf(ContextCompat.getColor(ctx, bgColorRes)),
         )
-        cardBinding.ivTaskIcon.setImageResource(iconResFor(task.iconHint))
+        cardBinding.ivTaskIcon.setImageResource(task.iconHint.iconRes())
         cardBinding.ivTaskIcon.imageTintList = ColorStateList.valueOf(ContextCompat.getColor(ctx, tintColorRes))
 
         cardBinding.tvTaskTitle.text = task.titulo
@@ -142,16 +141,6 @@ class OpenTasksFragment : Fragment() {
             ActivityFormBottomSheet.newEditAssignmentInstance(assignmentId)
                 .show(childFragmentManager, ActivityFormBottomSheet.TAG)
         }
-    }
-
-    private fun iconResFor(hint: TaskIconHint): Int = when (hint) {
-        TaskIconHint.DROP -> R.drawable.ic_drop
-        TaskIconHint.TRASH -> R.drawable.ic_trash
-        TaskIconHint.LEAF -> R.drawable.ic_leaf
-        TaskIconHint.CART -> R.drawable.ic_cart
-        TaskIconHint.FRIDGE -> R.drawable.ic_fridge
-        TaskIconHint.RECEIPT -> R.drawable.ic_receipt
-        TaskIconHint.CALENDAR -> R.drawable.ic_calendar
     }
 
     override fun onDestroyView() {
