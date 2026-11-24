@@ -122,9 +122,58 @@
     <string name="preference_gosto">Gosto</string>
     <string name="cd_preference_option">%1$s: %2$s</string>
 
-    <!-- Placeholders das abas futuras (#23, #24) -->
-    <string name="placeholder_house_invite">Código de convite: %1$s</string>
-    <string name="placeholder_house">Aba Casa será migrada em breve.</string>
+    <!-- Aba Casa (#23) -->
+    <string name="house_eyebrow">Configurações da casa</string>
+    <string name="house_meta_singular">#%1$s · 1 morador</string>
+    <string name="house_meta_plural">#%1$s · %2$d moradores</string>
+
+    <string name="house_invite_overline">CÓDIGO DE CONVITE</string>
+    <string name="house_invite_active">Ativo</string>
+    <string name="house_invite_copy">Copiar código</string>
+    <string name="house_invite_copied">Copiado ✓</string>
+    <string name="house_invite_clip_label">Código de convite Sua Vez</string>
+    <string name="house_invite_share">Compartilhar</string>
+    <string name="house_invite_share_text">Entre na casa \"%1$s\" no Sua Vez usando o código: %2$s</string>
+    <string name="house_invite_share_chooser">Compartilhar convite</string>
+
+    <string name="house_scoreboard_title">Pontuação da semana</string>
+    <string name="house_scoreboard_cycle">Ciclo atual</string>
+    <string name="house_rank_me_suffix">&#160;· você</string>
+    <string name="house_rank_points">%1$d pts</string>
+    <string name="house_balanced">Casa equilibrada</string>
+    <string name="house_balance_gap">Diferença de %1$d%%</string>
+    <string name="house_done_summary">%1$d de %2$d tarefas feitas</string>
+
+    <string name="house_members_title">Moradores</string>
+    <string name="house_members_count_singular">1 integrante</string>
+    <string name="house_members_count_plural">%1$d integrantes</string>
+    <string name="house_member_role_admin">Admin</string>
+    <string name="house_member_role_next">Próximo da vez</string>
+    <string name="house_member_open_zero">0 abertas</string>
+    <string name="house_member_open_singular">1 aberta · %1$d pts</string>
+    <string name="house_member_open_plural">%1$d abertas · %2$d pts</string>
+    <string name="cd_manage_member">Gerenciar %1$s</string>
+
+    <string name="sheet_member_manage_subtitle">Gerenciar morador</string>
+    <string name="action_make_admin">Tornar admin</string>
+    <string name="action_remove_member">Remover da casa</string>
+    <string name="dialog_promote_admin_title">Transferir administração?</string>
+    <string name="dialog_promote_admin_message">%1$s passará a ser Admin da casa e você passará a ser morador comum.</string>
+    <string name="dialog_remove_member_title">Remover %1$s?</string>
+    <string name="dialog_remove_member_message">As tarefas pendentes desse morador voltarão para as tarefas abertas.</string>
+    <string name="action_confirm_remove">Remover</string>
+
+    <string name="house_recurring_title">Tarefas recorrentes da casa</string>
+    <string name="house_recurring_subtitle">Repetem toda semana · definem a cota de cada um</string>
+    <string name="house_weekly_quota_prefix">Cota semanal por morador:&#160;</string>
+    <string name="house_weekly_quota_value">%1$d pts</string>
+    <string name="effort_light">Leve</string>
+    <string name="effort_medium">Média</string>
+    <string name="effort_heavy">Pesada</string>
+    <string name="house_recurring_meta">%1$s · %2$s</string>
+    <string name="cd_edit_recurring_task">Editar %1$s</string>
+
+    <!-- Placeholders das abas futuras (#24) -->
     <string name="placeholder_profile_subtitle">Configurações completas de perfil serão migradas em breve.</string>
     <string name="action_sign_out">Sair da conta</string>
     <!-- Open Tasks Fragment -->

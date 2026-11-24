@@ -22,14 +22,20 @@ class SegmentedQuotaBarView @JvmOverloads constructor(
 
     private var doneFraction: Float = 0f
     private var pendingFraction: Float = 0f
+    private var useAmberGradient: Boolean = false
 
     private val trackColor = ContextCompat.getColor(context, R.color.nevoa)
     private val doneStartColor = ContextCompat.getColor(context, R.color.verde_fundo)
     private val doneEndColor = ContextCompat.getColor(context, R.color.verde_casa)
+    private val amberStartColor = ContextCompat.getColor(context, R.color.ambar_vez)
+    private val amberEndColor = ContextCompat.getColor(context, R.color.ambar_vez_claro)
     private val pendingColor = ColorUtils.setAlphaComponent(
         ContextCompat.getColor(context, R.color.ambar_vez),
         115,
     )
+
+    private var tealShader: Shader? = null
+    private var amberShader: Shader? = null
 
     private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = trackColor
@@ -46,12 +52,18 @@ class SegmentedQuotaBarView @JvmOverloads constructor(
     private val boundsRect = RectF()
     private val clipPath = Path()
 
-    fun setProgress(done: Float, pending: Float) {
+    @JvmOverloads
+    fun setProgress(done: Float, pending: Float = 0f, useAmberGradient: Boolean = false) {
         val clampedDone = done.coerceIn(0f, 1f)
         val clampedPending = pending.coerceIn(0f, 1f - clampedDone)
-        if (doneFraction != clampedDone || pendingFraction != clampedPending) {
+        if (doneFraction != clampedDone ||
+            pendingFraction != clampedPending ||
+            this.useAmberGradient != useAmberGradient
+        ) {
             doneFraction = clampedDone
             pendingFraction = clampedPending
+            this.useAmberGradient = useAmberGradient
+            donePaint.shader = if (useAmberGradient) amberShader else tealShader
             invalidate()
         }
     }
@@ -62,8 +74,8 @@ class SegmentedQuotaBarView @JvmOverloads constructor(
         val radius = h / 2f
         clipPath.reset()
         clipPath.addRoundRect(boundsRect, radius, radius, Path.Direction.CW)
-        donePaint.shader = if (w > 0) {
-            LinearGradient(
+        if (w > 0) {
+            tealShader = LinearGradient(
                 0f,
                 0f,
                 w.toFloat(),
@@ -72,9 +84,20 @@ class SegmentedQuotaBarView @JvmOverloads constructor(
                 doneEndColor,
                 Shader.TileMode.CLAMP,
             )
+            amberShader = LinearGradient(
+                0f,
+                0f,
+                w.toFloat(),
+                0f,
+                amberStartColor,
+                amberEndColor,
+                Shader.TileMode.CLAMP,
+            )
         } else {
-            null
+            tealShader = null
+            amberShader = null
         }
+        donePaint.shader = if (useAmberGradient) amberShader else tealShader
     }
 
     override fun onDraw(canvas: Canvas) {

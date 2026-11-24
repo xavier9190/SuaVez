@@ -1,7 +1,6 @@
 package xavier.pedro.suavez.ui
 
 import android.content.res.ColorStateList
-import android.content.res.Configuration
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -29,12 +28,10 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
 import kotlinx.coroutines.launch
 import xavier.pedro.suavez.R
-import xavier.pedro.suavez.data.model.TaskWeightLevel
 import xavier.pedro.suavez.databinding.FragmentTasksBinding
 import xavier.pedro.suavez.databinding.ItemOpenTaskPreviewBinding
 import xavier.pedro.suavez.databinding.ItemTaskCardBinding
 import xavier.pedro.suavez.ui.state.SuaVezSharedViewModel
-import xavier.pedro.suavez.ui.state.TaskIconHint
 import xavier.pedro.suavez.ui.state.avatarIndexFor
 import xavier.pedro.suavez.ui.state.initialsOf
 import java.util.Locale
@@ -203,12 +200,12 @@ class TasksFragment : Fragment() {
                     false,
                 )
                 rowBinding.dividerOpenPreview.isVisible = index > 0
-                val effortStyle = effortColors(openTask.effortLevel)
+                val effortStyle = requireContext().effortVisualStyle(openTask.effortLevel)
                 ViewCompat.setBackgroundTintList(
                     rowBinding.flOpenIconCircle,
                     ColorStateList.valueOf(effortStyle.bg),
                 )
-                rowBinding.ivOpenTaskIcon.setImageResource(iconResFor(openTask.iconHint))
+                rowBinding.ivOpenTaskIcon.setImageResource(openTask.iconHint.iconRes())
                 rowBinding.ivOpenTaskIcon.imageTintList = ColorStateList.valueOf(effortStyle.iconTint)
                 rowBinding.tvOpenTaskTitle.text = openTask.titulo
                 ViewCompat.setBackgroundTintList(
@@ -234,7 +231,7 @@ class TasksFragment : Fragment() {
         val ctx = requireContext()
         val task = item.assignment
         val showSuaVez = item.isSuaVez && !task.isDone
-        val nightMode = isNightMode()
+        val nightMode = ctx.isNightMode()
 
         cardBinding.viewSuaVezAccent.isVisible = showSuaVez
         cardBinding.tvSuaVezBadge.isVisible = showSuaVez
@@ -261,12 +258,12 @@ class TasksFragment : Fragment() {
         )
         cardBinding.btnTaskCheckbox.contentDescription = getString(R.string.cd_toggle_task, task.titulo)
 
-        val effortStyle = effortColors(task.effortLevel)
+        val effortStyle = ctx.effortVisualStyle(task.effortLevel)
         ViewCompat.setBackgroundTintList(
             cardBinding.flTaskIconCircle,
             ColorStateList.valueOf(effortStyle.bg),
         )
-        cardBinding.ivTaskIcon.setImageResource(iconResFor(task.iconHint))
+        cardBinding.ivTaskIcon.setImageResource(task.iconHint.iconRes())
         cardBinding.ivTaskIcon.imageTintList = ColorStateList.valueOf(effortStyle.iconTint)
         cardBinding.flTaskIconCircle.alpha = if (task.isDone) 0.55f else 1f
 
@@ -299,9 +296,9 @@ class TasksFragment : Fragment() {
     private fun renderMemberAvatars(members: List<xavier.pedro.suavez.ui.state.UiMember>) {
         val ctx = requireContext()
         binding.llMemberAvatars.removeAllViews()
-        val sizePx = dp(32)
-        val overlapPx = dp(8)
-        val borderPx = dp(2)
+        val sizePx = ctx.dp(32)
+        val overlapPx = ctx.dp(8)
+        val borderPx = ctx.dp(2)
         val borderColor = ContextCompat.getColor(ctx, R.color.superficie)
         val textColor = ContextCompat.getColor(ctx, R.color.verde_fundo)
         val typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
@@ -332,64 +329,8 @@ class TasksFragment : Fragment() {
         getString(R.string.tasks_effort_pts_plural, points)
     }
 
-    private fun effortColors(level: TaskWeightLevel): EffortVisualStyle {
-        val ctx = requireContext()
-        return when (level) {
-            TaskWeightLevel.LIGHT -> EffortVisualStyle(
-                bg = ContextCompat.getColor(ctx, R.color.nevoa),
-                iconTint = ContextCompat.getColor(ctx, R.color.verde_casa),
-                pillText = ContextCompat.getColor(ctx, R.color.verde_fundo),
-            )
-            TaskWeightLevel.MEDIUM -> EffortVisualStyle(
-                bg = ContextCompat.getColor(ctx, R.color.ambar_vez_suave),
-                iconTint = ContextCompat.getColor(ctx, R.color.ambar_traco),
-                pillText = ContextCompat.getColor(ctx, R.color.ambar_vez_texto),
-            )
-            TaskWeightLevel.HEAVY -> EffortVisualStyle(
-                bg = ColorUtils.setAlphaComponent(
-                    ContextCompat.getColor(ctx, R.color.pref_odeio),
-                    if (isNightMode()) 56 else 31,
-                ),
-                iconTint = ContextCompat.getColor(ctx, R.color.pref_odeio),
-                pillText = ContextCompat.getColor(ctx, R.color.pref_odeio_texto),
-            )
-        }
-    }
-
-    private fun iconResFor(hint: TaskIconHint): Int = when (hint) {
-        TaskIconHint.DROP -> R.drawable.ic_drop
-        TaskIconHint.TRASH -> R.drawable.ic_trash
-        TaskIconHint.CART -> R.drawable.ic_cart
-        TaskIconHint.RECEIPT -> R.drawable.ic_receipt
-        TaskIconHint.FRIDGE -> R.drawable.ic_fridge
-        TaskIconHint.LEAF -> R.drawable.ic_leaf
-        TaskIconHint.CALENDAR -> R.drawable.ic_calendar
-    }
-
-    private fun isNightMode(): Boolean {
-        val mask = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
-        return mask == Configuration.UI_MODE_NIGHT_YES
-    }
-
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()
-
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
-    }
-
-    private data class EffortVisualStyle(
-        val bg: Int,
-        val iconTint: Int,
-        val pillText: Int,
-    )
-
-    companion object {
-        private val AVATAR_COLORS = intArrayOf(
-            R.color.avatar_1,
-            R.color.avatar_2,
-            R.color.avatar_3,
-            R.color.avatar_4,
-        )
     }
 }
