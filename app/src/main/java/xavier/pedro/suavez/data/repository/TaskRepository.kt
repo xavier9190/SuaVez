@@ -120,7 +120,8 @@ class TaskRepository(
             batch.set(taskDoc, newTask)
 
             if (createInitialAssignmentInCurrentWeek) {
-                val assignmentDoc = assignmentsCol(houseId).document()
+                val deterministicId = AssignmentRepository.catalogAssignmentId(semanaAtual, newTask.id)
+                val assignmentDoc = assignmentsCol(houseId).document(deterministicId)
                 val defaultDeadline = initialDeadline?.name ?: when (frequency) {
                     TaskFrequency.DIARIA -> TaskDeadline.HOJE.name
                     else -> TaskDeadline.DOMINGO.name
