@@ -216,7 +216,7 @@ class FirestoreSuaVezDataSource(
     ): Result<Unit> = taskRepository.deleteRecurringTask(
         houseId = houseId,
         recurringTaskId = recurringTaskId,
-        hardDelete = true,
+        hardDelete = false,
         semanaAtual = semanaAtual,
     )
 

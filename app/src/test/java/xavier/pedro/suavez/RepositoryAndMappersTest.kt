@@ -1,5 +1,6 @@
 package xavier.pedro.suavez
 
+import com.google.firebase.Timestamp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -32,6 +33,7 @@ import xavier.pedro.suavez.ui.state.TaskDeadline
 import xavier.pedro.suavez.ui.state.TaskFrequency
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.util.Date
 import java.util.TimeZone
 
 class RepositoryAndMappersTest {
@@ -241,10 +243,90 @@ class RepositoryAndMappersTest {
     }
 
     @Test
+    fun deterministicAssignmentIdsAndRolloverIdempotencyWorkCorrectly() {
+        assertEquals("2026-W46_task_t_1", AssignmentRepository.catalogAssignmentId("2026-W46", "t_1"))
+        assertEquals("2026-W46_rollover_a_1", AssignmentRepository.rolloverAssignmentId("2026-W46", "a_1"))
+
+        val previousAssignments = listOf(
+            Assignment(
+                id = "old_pending",
+                semana = "2026-W45",
+                taskId = "t_2",
+                titulo = "Comprar sabão",
+                peso = 5,
+                status = AssignmentStatus.PENDENTE.name,
+            ),
+        )
+        val catalog = listOf(
+            Task(id = "t_1", titulo = "Lavar banheiro", peso = 8, frequencia = "SEMANAL", ativa = true),
+            Task(id = "t_2", titulo = "Comprar sabão", peso = 5, frequencia = "QUINZENAL", ativa = true),
+        )
+        val existingInNewWeek = listOf(
+            Assignment(
+                id = AssignmentRepository.catalogAssignmentId("2026-W46", "t_1"),
+                semana = "2026-W46",
+                taskId = "t_1",
+                titulo = "Lavar banheiro",
+                peso = 8,
+            ),
+            Assignment(
+                id = AssignmentRepository.rolloverAssignmentId("2026-W46", "old_pending"),
+                semana = "2026-W46",
+                taskId = "t_2",
+                titulo = "Comprar sabão",
+                peso = 5,
+                ehRollover = true,
+            ),
+        )
+
+        // Rollover existente de t_2 não deve suprimir a instância de catálogo de t_2 na nova semana
+        val partialPlan = AssignmentRepository.buildWeekRolloverPlan(
+            previousWeekKey = "2026-W45",
+            newWeekKey = "2026-W46",
+            previousWeekAssignments = previousAssignments,
+            activeCatalogTasks = catalog,
+            existingNewWeekAssignments = existingInNewWeek,
+            createdByUid = "u_ana",
+        )
+        assertTrue(partialPlan.rolledOverAssignments.isEmpty())
+        assertEquals(listOf("2026-W46_task_t_2"), partialPlan.catalogAssignments.map { it.id })
+
+        // Quando todas as instâncias determinísticas já existem na nova semana, o plano é totalmente idempotente
+        val fullExisting = existingInNewWeek + partialPlan.catalogAssignments
+        val idempotentPlan = AssignmentRepository.buildWeekRolloverPlan(
+            previousWeekKey = "2026-W45",
+            newWeekKey = "2026-W46",
+            previousWeekAssignments = previousAssignments,
+            activeCatalogTasks = catalog,
+            existingNewWeekAssignments = fullExisting,
+            createdByUid = "u_ana",
+        )
+        assertTrue(idempotentPlan.rolledOverAssignments.isEmpty())
+        assertTrue(idempotentPlan.catalogAssignments.isEmpty())
+    }
+
+    @Test
     fun parseWeekNumberHandlesValidAndMalformedKeys() {
         assertEquals(46, DateCycleUtils.parseWeekNumber("2026-W46"))
         assertEquals(1, DateCycleUtils.parseWeekNumber("2026", fallbackWeek = 1))
         assertEquals(1, DateCycleUtils.parseWeekNumber(null, fallbackWeek = 1))
+    }
+
+    @Test
+    fun monthKeyFromExtractsMonthAcrossBoundariesAndFallsBackWhenNull() {
+        val zoneId = ZoneId.of("America/Recife")
+        val timeZone = TimeZone.getTimeZone(zoneId)
+
+        val endOfOctober = Date.from(ZonedDateTime.of(2026, 10, 31, 23, 59, 59, 0, zoneId).toInstant())
+        val startOfNovember = Date.from(ZonedDateTime.of(2026, 11, 1, 0, 0, 1, 0, zoneId).toInstant())
+        val endOfYear = Date.from(ZonedDateTime.of(2026, 12, 31, 23, 59, 59, 0, zoneId).toInstant())
+        val startOfNewYear = Date.from(ZonedDateTime.of(2027, 1, 1, 0, 0, 1, 0, zoneId).toInstant())
+
+        assertEquals("2026-10", DateCycleUtils.monthKeyFrom(endOfOctober, timeZone))
+        assertEquals("2026-11", DateCycleUtils.monthKeyFrom(startOfNovember, timeZone))
+        assertEquals("2026-12", DateCycleUtils.monthKeyFrom(Timestamp(endOfYear), fallbackMonthKey = "2027-01", timeZone = timeZone))
+        assertEquals("2027-01", DateCycleUtils.monthKeyFrom(Timestamp(startOfNewYear), fallbackMonthKey = "2026-12", timeZone = timeZone))
+        assertEquals("2026-11", DateCycleUtils.monthKeyFrom(null as Timestamp?, fallbackMonthKey = "2026-11", timeZone = timeZone))
     }
 
     @Test
@@ -357,6 +439,70 @@ class RepositoryAndMappersTest {
         )
         assertNull(
             DateCycleUtils.computeReminderTriggerAtMillis("2025-W53", TaskDeadline.SABADO, beforeYearStart, timeZone),
+        )
+    }
+
+    @Test
+    fun memberRemovalReopensOnlyUnfinishedAssignmentsFromCurrentWeekAndResetsAutoDistribution() {
+        val currentWeek = "2026-W46"
+        val removedUid = "u_bruno"
+
+        val autoAssignedCurrent = Assignment(
+            id = "a_1",
+            semana = currentWeek,
+            titulo = "Lavar banheiro",
+            status = AssignmentStatus.ATRIBUIDA.name,
+            responsavelUid = removedUid,
+            responsavelNome = "Bruno",
+            distribuidaAutomaticamente = true,
+        )
+        val completedCurrent = Assignment(
+            id = "a_2",
+            semana = currentWeek,
+            titulo = "Tirar lixo",
+            status = AssignmentStatus.CONCLUIDA.name,
+            responsavelUid = removedUid,
+            responsavelNome = "Bruno",
+            distribuidaAutomaticamente = true,
+        )
+        val previousWeekPending = Assignment(
+            id = "a_3",
+            semana = "2026-W45",
+            titulo = "Passar pano",
+            status = AssignmentStatus.ATRIBUIDA.name,
+            responsavelUid = removedUid,
+            responsavelNome = "Bruno",
+            distribuidaAutomaticamente = true,
+        )
+        val otherMemberCurrent = Assignment(
+            id = "a_4",
+            semana = currentWeek,
+            titulo = "Lavar louça",
+            status = AssignmentStatus.ATRIBUIDA.name,
+            responsavelUid = "u_ana",
+            responsavelNome = "Ana",
+            distribuidaAutomaticamente = true,
+        )
+
+        assertTrue(HouseRepository.shouldReopenAssignmentOnMemberRemoval(autoAssignedCurrent, removedUid, currentWeek))
+        assertFalse(HouseRepository.shouldReopenAssignmentOnMemberRemoval(completedCurrent, removedUid, currentWeek))
+        assertFalse(HouseRepository.shouldReopenAssignmentOnMemberRemoval(previousWeekPending, removedUid, currentWeek))
+        assertFalse(HouseRepository.shouldReopenAssignmentOnMemberRemoval(otherMemberCurrent, removedUid, currentWeek))
+
+        val reopened = HouseRepository.reopenAssignmentOnMemberRemoval(autoAssignedCurrent)
+        assertNull(reopened.responsavelUid)
+        assertNull(reopened.responsavelNome)
+        assertEquals(AssignmentStatus.PENDENTE.name, reopened.status)
+        assertFalse(reopened.distribuidaAutomaticamente)
+
+        assertEquals(
+            mapOf(
+                "responsavelUid" to null,
+                "responsavelNome" to null,
+                "status" to AssignmentStatus.PENDENTE.name,
+                "distribuidaAutomaticamente" to false,
+            ),
+            HouseRepository.reopenedAssignmentUpdateMap(),
         )
     }
 }
