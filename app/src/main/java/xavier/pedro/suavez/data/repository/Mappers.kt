@@ -19,9 +19,14 @@ import xavier.pedro.suavez.ui.state.UiMember
 import xavier.pedro.suavez.ui.state.UiUser
 import xavier.pedro.suavez.ui.state.defaultIconFor
 import java.util.Calendar
+import java.util.GregorianCalendar
 import java.util.Locale
+import java.util.TimeZone
 
 object DateCycleUtils {
+
+    private const val REMINDER_HOUR = 9
+    private val ISO_WEEK_KEY_REGEX = Regex("^(\\d{4})-W(\\d{1,2})$", RegexOption.IGNORE_CASE)
 
     fun currentIsoWeekKey(calendar: Calendar = Calendar.getInstance()): String {
         val isoCal = (calendar.clone() as Calendar).apply {
@@ -51,6 +56,47 @@ object DateCycleUtils {
         return match?.groupValues?.getOrNull(1)?.toIntOrNull()
             ?: semanaKey.trim().toIntOrNull()?.takeIf { it in 1..53 }
             ?: fallbackWeek
+    }
+
+    /**
+     * Calcula o instante (epoch millis) do lembrete fixo às 09:00 da véspera do prazo:
+     * - [TaskDeadline.SABADO] -> sexta-feira da semana ISO às 09:00
+     * - [TaskDeadline.DOMINGO] -> sábado da semana ISO às 09:00
+     * - [TaskDeadline.HOJE], [TaskDeadline.SEM_PRAZO], nulo, chave inválida ou marco <= [nowMillis] -> `null`
+     */
+    fun computeReminderTriggerAtMillis(
+        semanaKey: String?,
+        deadline: TaskDeadline?,
+        nowMillis: Long = System.currentTimeMillis(),
+        timeZone: TimeZone = TimeZone.getDefault(),
+    ): Long? {
+        if (semanaKey.isNullOrBlank()) return null
+        val targetDayOfWeek = when (deadline) {
+            TaskDeadline.SABADO -> Calendar.FRIDAY
+            TaskDeadline.DOMINGO -> Calendar.SATURDAY
+            TaskDeadline.HOJE, TaskDeadline.SEM_PRAZO, null -> return null
+        }
+
+        val match = ISO_WEEK_KEY_REGEX.matchEntire(semanaKey.trim()) ?: return null
+        val isoYear = match.groupValues[1].toIntOrNull() ?: return null
+        val isoWeek = match.groupValues[2].toIntOrNull()?.takeIf { it in 1..53 } ?: return null
+
+        val cal = GregorianCalendar(timeZone, Locale.US).apply {
+            firstDayOfWeek = Calendar.MONDAY
+            minimalDaysInFirstWeek = 4
+            clear()
+            setWeekDate(isoYear, isoWeek, targetDayOfWeek)
+        }
+        if (cal.weekYear != isoYear || cal.get(Calendar.WEEK_OF_YEAR) != isoWeek) {
+            return null
+        }
+        cal.set(Calendar.HOUR_OF_DAY, REMINDER_HOUR)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+
+        val triggerAtMillis = cal.timeInMillis
+        return triggerAtMillis.takeIf { it > nowMillis }
     }
 }
 
@@ -119,11 +165,12 @@ fun User.toUiUser(): UiUser = UiUser(
     uid = uid,
     nome = nome,
     email = email,
+    fotoUrl = fotoUrl,
 )
 
 fun UiUser.toFirestoreUser(
     currentHouseId: String? = null,
-    fotoUrl: String? = null,
+    fotoUrl: String? = this.fotoUrl,
 ): User = User(
     uid = uid,
     nome = nome,

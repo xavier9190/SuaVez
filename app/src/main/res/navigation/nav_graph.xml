@@ -3,40 +3,46 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/nav_graph"
-    app:startDestination="@id/tasksFragment">
+    app:startDestination="@id/noHouseFragment">
+
+    <fragment
+        android:id="@+id/noHouseFragment"
+        android:name="xavier.pedro.suavez.ui.NoHouseFragment"
+        android:label="@string/nav_house"
+        tools:layout="@layout/fragment_no_house" />
 
     <fragment
         android:id="@+id/tasksFragment"
         android:name="xavier.pedro.suavez.ui.TasksFragment"
-        android:label="Tarefas"
+        android:label="@string/nav_tasks"
         tools:layout="@layout/fragment_tasks">
         <action
-            android:id="@+id/action_tasksFragment_to_taskCreateFragment"
-            app:destination="@id/taskCreateFragment" />
+            android:id="@+id/action_tasksFragment_to_openTasksFragment"
+            app:destination="@id/openTasksFragment" />
     </fragment>
+
+    <fragment
+        android:id="@+id/openTasksFragment"
+        android:name="xavier.pedro.suavez.ui.OpenTasksFragment"
+        android:label="@string/open_tasks_title"
+        tools:layout="@layout/fragment_open_tasks" />
 
     <fragment
         android:id="@+id/preferencesFragment"
         android:name="xavier.pedro.suavez.ui.PreferencesFragment"
-        android:label="Preferências"
+        android:label="@string/nav_preferences"
         tools:layout="@layout/fragment_preferences" />
 
     <fragment
-        android:id="@+id/scoreboardFragment"
-        android:name="xavier.pedro.suavez.ui.ScoreboardFragment"
-        android:label="Placar"
-        tools:layout="@layout/fragment_scoreboard" />
+        android:id="@+id/houseFragment"
+        android:name="xavier.pedro.suavez.ui.HouseFragment"
+        android:label="@string/nav_house"
+        tools:layout="@layout/fragment_house" />
 
     <fragment
-        android:id="@+id/roommatesFragment"
-        android:name="xavier.pedro.suavez.ui.RoommatesFragment"
-        android:label="Moradores"
-        tools:layout="@layout/fragment_roommates" />
-
-    <fragment
-        android:id="@+id/taskCreateFragment"
-        android:name="xavier.pedro.suavez.ui.TaskCreateFragment"
-        android:label="Cadastro de Tarefa"
-        tools:layout="@layout/fragment_task_create" />
+        android:id="@+id/profileFragment"
+        android:name="xavier.pedro.suavez.ui.ProfileFragment"
+        android:label="@string/nav_profile"
+        tools:layout="@layout/fragment_profile" />
 
 </navigation>

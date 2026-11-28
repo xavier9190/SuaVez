@@ -30,6 +30,9 @@ import xavier.pedro.suavez.data.repository.toUiUser
 import xavier.pedro.suavez.ui.state.TaskCategory
 import xavier.pedro.suavez.ui.state.TaskDeadline
 import xavier.pedro.suavez.ui.state.TaskFrequency
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.util.TimeZone
 
 class RepositoryAndMappersTest {
 
@@ -39,15 +42,18 @@ class RepositoryAndMappersTest {
             uid = "u_1",
             nome = "Ana Costa",
             email = "ana@suavez.app",
+            fotoUrl = "https://example.com/ana.jpg",
             currentHouseId = "h_1",
         )
         val uiUser = user.toUiUser()
         assertEquals("u_1", uiUser.uid)
         assertEquals("Ana Costa", uiUser.nome)
         assertEquals("ana@suavez.app", uiUser.email)
+        assertEquals("https://example.com/ana.jpg", uiUser.fotoUrl)
 
         val backToFirestore = uiUser.toFirestoreUser(currentHouseId = "h_1")
         assertEquals("h_1", backToFirestore.currentHouseId)
+        assertEquals("https://example.com/ana.jpg", backToFirestore.fotoUrl)
 
         val house = House(
             id = "h_1",
@@ -250,5 +256,107 @@ class RepositoryAndMappersTest {
         val defaultCategories = TaskCategory.entries.map { it.toDefaultCategoryModel() }
         assertEquals(4, defaultCategories.size)
         assertTrue(defaultCategories.all { it.padrao })
+    }
+
+    @Test
+    fun inviteCodeValidationAcceptsNormalizedAndRejectsMalformedCodes() {
+        assertTrue(HouseRepository.isValidInviteCode("SV-7824"))
+        assertTrue(HouseRepository.isValidInviteCode("sv7824"))
+        assertTrue(HouseRepository.isValidInviteCode(" sv-1000 "))
+        assertTrue(HouseRepository.isValidInviteCode("SV4X89"))
+
+        assertFalse(HouseRepository.isValidInviteCode(""))
+        assertFalse(HouseRepository.isValidInviteCode("   "))
+        assertFalse(HouseRepository.isValidInviteCode("123"))
+        assertFalse(HouseRepository.isValidInviteCode("7824"))
+        assertFalse(HouseRepository.isValidInviteCode("SV-12"))
+        assertFalse(HouseRepository.isValidInviteCode("SV-12345"))
+        assertFalse(HouseRepository.isValidInviteCode("ABCD"))
+    }
+
+    @Test
+    fun computeReminderTriggerAtMillisCalculatesFridayAndSaturdayMorning() {
+        val zoneId = ZoneId.of("America/Recife")
+        val timeZone = TimeZone.getTimeZone(zoneId)
+        val mondayMorning = ZonedDateTime.of(2026, 4, 13, 8, 0, 0, 0, zoneId)
+            .toInstant()
+            .toEpochMilli()
+
+        val expectedFriday = ZonedDateTime.of(2026, 4, 17, 9, 0, 0, 0, zoneId)
+            .toInstant()
+            .toEpochMilli()
+        val expectedSaturday = ZonedDateTime.of(2026, 4, 18, 9, 0, 0, 0, zoneId)
+            .toInstant()
+            .toEpochMilli()
+
+        assertEquals(
+            expectedFriday,
+            DateCycleUtils.computeReminderTriggerAtMillis(
+                semanaKey = "2026-W16",
+                deadline = TaskDeadline.SABADO,
+                nowMillis = mondayMorning,
+                timeZone = timeZone,
+            ),
+        )
+        assertEquals(
+            expectedSaturday,
+            DateCycleUtils.computeReminderTriggerAtMillis(
+                semanaKey = "2026-W16",
+                deadline = TaskDeadline.DOMINGO,
+                nowMillis = mondayMorning,
+                timeZone = timeZone,
+            ),
+        )
+    }
+
+    @Test
+    fun computeReminderTriggerAtMillisHandlesYearBoundaryAndIneligibleCases() {
+        val zoneId = ZoneId.of("America/Recife")
+        val timeZone = TimeZone.getTimeZone(zoneId)
+        val beforeYearStart = ZonedDateTime.of(2025, 12, 29, 10, 0, 0, 0, zoneId)
+            .toInstant()
+            .toEpochMilli()
+        val expectedJan2Friday = ZonedDateTime.of(2026, 1, 2, 9, 0, 0, 0, zoneId)
+            .toInstant()
+            .toEpochMilli()
+
+        assertEquals(
+            expectedJan2Friday,
+            DateCycleUtils.computeReminderTriggerAtMillis(
+                semanaKey = "2026-W01",
+                deadline = TaskDeadline.SABADO,
+                nowMillis = beforeYearStart,
+                timeZone = timeZone,
+            ),
+        )
+
+        val mondayW16 = ZonedDateTime.of(2026, 4, 13, 8, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+        val exactFriday9am = ZonedDateTime.of(2026, 4, 17, 9, 0, 0, 0, zoneId).toInstant().toEpochMilli()
+        val afterFriday9am = exactFriday9am + 1_000L
+
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("2026-W16", TaskDeadline.HOJE, mondayW16, timeZone),
+        )
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("2026-W16", TaskDeadline.SEM_PRAZO, mondayW16, timeZone),
+        )
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("2026-W16", null, mondayW16, timeZone),
+        )
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("2026-W16", TaskDeadline.SABADO, exactFriday9am, timeZone),
+        )
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("2026-W16", TaskDeadline.SABADO, afterFriday9am, timeZone),
+        )
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("", TaskDeadline.SABADO, mondayW16, timeZone),
+        )
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("invalid", TaskDeadline.SABADO, mondayW16, timeZone),
+        )
+        assertNull(
+            DateCycleUtils.computeReminderTriggerAtMillis("2025-W53", TaskDeadline.SABADO, beforeYearStart, timeZone),
+        )
     }
 }

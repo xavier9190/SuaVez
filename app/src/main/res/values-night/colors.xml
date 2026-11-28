@@ -4,7 +4,9 @@
     <color name="verde_casa">#2FC2AE</color>
     <color name="verde_fundo">#8CE6D8</color>
     <color name="nevoa">#16332F</color>
+    <color name="admin_chip_stroke">#472FC2AE</color>
     <color name="ambar_vez">#F5A524</color>
+    <color name="ambar_vez_claro">#FBC66B</color>
     <color name="ambar_vez_suave">#3A2A10</color>
     <color name="ambar_vez_texto">#FFD384</color>
     <color name="ambar_traco">#F5A524</color>
@@ -16,6 +18,9 @@
     <color name="linha">#243945</color>
     <color name="parede">#0E1A22</color>
     <color name="superficie">#15252F</color>
+    <color name="ring_track">#56411B</color>
+    <color name="checkbox_border">#3E5964</color>
+    <color name="dashed_border">#2E4D59</color>
 
     <!-- Esforço e preferência -->
     <color name="pref_odeio">#E2574C</color>

@@ -10,8 +10,12 @@ import xavier.pedro.suavez.data.model.User
 import xavier.pedro.suavez.ui.state.TaskCategory
 import xavier.pedro.suavez.ui.state.TaskDeadline
 import xavier.pedro.suavez.ui.state.TaskFrequency
-import xavier.pedro.suavez.ui.state.TestProfile
-import xavier.pedro.suavez.ui.state.TestProfileSession
+
+data class AuthSession(
+    val user: User,
+    val house: House?,
+    val members: List<Member>,
+)
 
 /**
  * Porta única de dados usada pelo [xavier.pedro.suavez.ui.state.SuaVezStateHolder]
@@ -23,7 +27,9 @@ interface SuaVezDataSource {
     fun observeTasks(houseId: String): Flow<List<Task>>
     fun observeWeekAssignments(houseId: String, semana: String): Flow<List<Assignment>>
 
-    suspend fun loadOrBootstrapTestProfile(profile: TestProfile): Result<TestProfileSession>
+    suspend fun restoreSession(): Result<AuthSession?>
+    suspend fun signInWithGoogleIdToken(idToken: String): Result<AuthSession>
+    suspend fun signOut(): Result<Unit>
     suspend fun createHouse(houseName: String, creator: User): Result<House>
     suspend fun joinHouseByCode(inviteCode: String, user: User): Result<House>
     suspend fun renameHouse(houseId: String, newName: String): Result<Unit>
@@ -99,6 +105,7 @@ interface SuaVezDataSource {
 }
 
 class FirestoreSuaVezDataSource(
+    private val authRepository: AuthRepository = AuthRepository(),
     private val houseRepository: HouseRepository = HouseRepository(),
     private val taskRepository: TaskRepository = TaskRepository(),
     private val assignmentRepository: AssignmentRepository = AssignmentRepository(),
@@ -116,8 +123,30 @@ class FirestoreSuaVezDataSource(
     override fun observeWeekAssignments(houseId: String, semana: String): Flow<List<Assignment>> =
         assignmentRepository.observeWeekAssignments(houseId, semana)
 
-    override suspend fun loadOrBootstrapTestProfile(profile: TestProfile): Result<TestProfileSession> =
-        houseRepository.loadOrBootstrapTestProfile(profile)
+    override suspend fun restoreSession(): Result<AuthSession?> = runCatching {
+        val user = authRepository.getCurrentUserProfile().getOrThrow() ?: return@runCatching null
+        loadSessionForUser(user)
+    }
+
+    override suspend fun signInWithGoogleIdToken(idToken: String): Result<AuthSession> = runCatching {
+        val user = authRepository.signInWithGoogleIdToken(idToken).getOrThrow()
+        loadSessionForUser(user)
+    }
+
+    override suspend fun signOut(): Result<Unit> = runCatching {
+        authRepository.signOut()
+    }
+
+    private suspend fun loadSessionForUser(user: User): AuthSession {
+        val houseId = user.currentHouseId?.takeIf { it.isNotBlank() }
+            ?: return AuthSession(user = user, house = null, members = emptyList())
+        val loaded = houseRepository.loadHouseAndMembers(houseId).getOrThrow()
+        if (loaded == null || loaded.second.none { it.uid == user.uid }) {
+            authRepository.updateCurrentHouseId(user.uid, null)
+            return AuthSession(user = user.copy(currentHouseId = null), house = null, members = emptyList())
+        }
+        return AuthSession(user = user, house = loaded.first, members = loaded.second)
+    }
 
     override suspend fun createHouse(houseName: String, creator: User): Result<House> =
         houseRepository.createHouse(houseName, creator)

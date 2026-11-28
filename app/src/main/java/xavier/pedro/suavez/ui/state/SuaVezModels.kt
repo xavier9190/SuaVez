@@ -55,6 +55,7 @@ data class UiUser(
     val uid: String,
     val nome: String,
     val email: String,
+    val fotoUrl: String? = null,
 )
 
 data class UiHouse(
