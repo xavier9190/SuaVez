@@ -207,7 +207,7 @@ class TaskRepository(
     suspend fun deleteRecurringTask(
         houseId: String,
         recurringTaskId: String,
-        hardDelete: Boolean = true,
+        hardDelete: Boolean = false,
         semanaAtual: String = DateCycleUtils.currentIsoWeekKey(),
     ): Result<Unit> = runCatching {
         val docRef = tasksCol(houseId).document(recurringTaskId)
