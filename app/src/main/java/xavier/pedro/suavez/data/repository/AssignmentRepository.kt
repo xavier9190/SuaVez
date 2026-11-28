@@ -315,45 +315,68 @@ class AssignmentRepository(
             .documents
             .mapNotNull { doc -> doc.toObject(Task::class.java)?.copy(id = doc.id) }
 
-        val plan = buildWeekRolloverPlan(
-            previousWeekKey = previousWeek,
-            newWeekKey = targetWeekKey,
-            previousWeekAssignments = previousAssignments,
-            activeCatalogTasks = activeCatalogTasks,
-            existingNewWeekAssignments = existingNewWeekAssignments,
-            createdByUid = house.criadaPorUid,
-        )
+        firestore.runTransaction { transaction ->
+            // Reads-before-writes obrigatório no SDK do Firestore
+            val freshHouseSnap = transaction.get(houseRef)
+            if (!freshHouseSnap.exists()) return@runTransaction null
+            val freshHouse = freshHouseSnap.toObject(House::class.java)?.copy(id = freshHouseSnap.id)
+                ?: return@runTransaction null
 
-        val batch = firestore.batch()
-
-        // Remover ou substituir pendentes da semana anterior ao fazer rollover para a nova semana
-        previousAssignments
-            .filter { !it.isConcluida() }
-            .forEach { oldIncomplete ->
-                batch.delete(assignmentsCol(houseId).document(oldIncomplete.id))
+            if (freshHouse.semanaAtual == targetWeekKey) {
+                return@runTransaction null
+            }
+            check(freshHouse.semanaAtual == previousWeek) {
+                "Semana atual da casa mudou concorrentemente (${freshHouse.semanaAtual} != $previousWeek)."
             }
 
-        plan.rolledOverAssignments.forEach { rolloverItem ->
-            val docRef = if (rolloverItem.id.isNotBlank()) {
-                assignmentsCol(houseId).document(rolloverItem.id)
-            } else {
-                assignmentsCol(houseId).document()
-            }
-            batch.set(docRef, rolloverItem.copy(id = docRef.id))
-        }
+            val refreshedPreviousAssignments = previousAssignments
+                .filter { !it.isConcluida() }
+                .mapNotNull { old ->
+                    if (old.id.isBlank()) {
+                        old
+                    } else {
+                        val snap = transaction.get(assignmentsCol(houseId).document(old.id))
+                        snap.toObject(Assignment::class.java)?.copy(id = snap.id)
+                    }
+                }
 
-        plan.catalogAssignments.forEach { catalogItem ->
-            val docRef = if (catalogItem.id.isNotBlank()) {
-                assignmentsCol(houseId).document(catalogItem.id)
-            } else {
-                assignmentsCol(houseId).document()
-            }
-            batch.set(docRef, catalogItem.copy(id = docRef.id))
-        }
+            val plan = buildWeekRolloverPlan(
+                previousWeekKey = previousWeek,
+                newWeekKey = targetWeekKey,
+                previousWeekAssignments = refreshedPreviousAssignments,
+                activeCatalogTasks = activeCatalogTasks,
+                existingNewWeekAssignments = existingNewWeekAssignments,
+                createdByUid = freshHouse.criadaPorUid,
+            )
 
-        batch.update(houseRef, "semanaAtual", targetWeekKey)
-        batch.commit().await()
-        plan
+            // Remover pendentes da semana anterior ao fazer rollover para a nova semana
+            refreshedPreviousAssignments
+                .filter { !it.isConcluida() && it.id.isNotBlank() }
+                .forEach { oldIncomplete ->
+                    transaction.delete(assignmentsCol(houseId).document(oldIncomplete.id))
+                }
+
+            plan.rolledOverAssignments.forEach { rolloverItem ->
+                val docRef = if (rolloverItem.id.isNotBlank()) {
+                    assignmentsCol(houseId).document(rolloverItem.id)
+                } else {
+                    assignmentsCol(houseId).document()
+                }
+                transaction.set(docRef, rolloverItem.copy(id = docRef.id))
+            }
+
+            plan.catalogAssignments.forEach { catalogItem ->
+                val docRef = if (catalogItem.id.isNotBlank()) {
+                    assignmentsCol(houseId).document(catalogItem.id)
+                } else {
+                    assignmentsCol(houseId).document()
+                }
+                transaction.set(docRef, catalogItem.copy(id = docRef.id))
+            }
+
+            transaction.update(houseRef, "semanaAtual", targetWeekKey)
+            plan
+        }.await()
     }
 
     companion object {
@@ -425,6 +448,12 @@ class AssignmentRepository(
             return decisions
         }
 
+        fun catalogAssignmentId(weekKey: String, taskId: String): String =
+            "${weekKey}_task_${taskId}"
+
+        fun rolloverAssignmentId(weekKey: String, oldAssignmentId: String): String =
+            "${weekKey}_rollover_${oldAssignmentId}"
+
         fun buildWeekRolloverPlan(
             previousWeekKey: String,
             newWeekKey: String,
@@ -433,11 +462,19 @@ class AssignmentRepository(
             existingNewWeekAssignments: List<Assignment> = emptyList(),
             createdByUid: String = "",
         ): RolloverPlan {
+            val existingIds = existingNewWeekAssignments
+                .mapNotNull { it.id.ifBlank { null } }
+                .toSet()
+
             val rolledOver = previousWeekAssignments
                 .filter { !it.isConcluida() }
                 .map { old ->
+                    val deterministicId = old.id
+                        .takeIf { it.isNotBlank() }
+                        ?.let { rolloverAssignmentId(newWeekKey, it) }
+                        .orEmpty()
                     old.copy(
-                        id = if (old.id.isNotBlank()) "${newWeekKey}_rollover_${old.id}" else "",
+                        id = deterministicId,
                         semana = newWeekKey,
                         deadline = TaskDeadline.HOJE.name,
                         status = AssignmentStatus.PENDENTE.name,
@@ -450,13 +487,19 @@ class AssignmentRepository(
                         concluidaEm = null,
                     )
                 }
+                .filter { it.id.isBlank() || it.id !in existingIds }
 
             val existingCatalogTaskIds = existingNewWeekAssignments
+                .filter { !it.ehRollover }
                 .mapNotNull { it.taskId }
                 .toSet()
 
             val catalogInstances = activeCatalogTasks
-                .filter { it.ativa && it.id !in existingCatalogTaskIds }
+                .filter { task ->
+                    task.ativa &&
+                        task.id !in existingCatalogTaskIds &&
+                        (task.id.isBlank() || catalogAssignmentId(newWeekKey, task.id) !in existingIds)
+                }
                 .mapIndexed { index, task ->
                     val freq = task.frequencia.toTaskFrequency()
                     val defaultDeadline = when {
@@ -465,7 +508,7 @@ class AssignmentRepository(
                         else -> TaskDeadline.DOMINGO
                     }
                     Assignment(
-                        id = if (task.id.isNotBlank()) "${newWeekKey}_task_${task.id}" else "",
+                        id = if (task.id.isNotBlank()) catalogAssignmentId(newWeekKey, task.id) else "",
                         semana = newWeekKey,
                         taskId = task.id,
                         titulo = task.titulo,

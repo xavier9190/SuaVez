@@ -241,6 +241,69 @@ class RepositoryAndMappersTest {
     }
 
     @Test
+    fun deterministicAssignmentIdsAndRolloverIdempotencyWorkCorrectly() {
+        assertEquals("2026-W46_task_t_1", AssignmentRepository.catalogAssignmentId("2026-W46", "t_1"))
+        assertEquals("2026-W46_rollover_a_1", AssignmentRepository.rolloverAssignmentId("2026-W46", "a_1"))
+
+        val previousAssignments = listOf(
+            Assignment(
+                id = "old_pending",
+                semana = "2026-W45",
+                taskId = "t_2",
+                titulo = "Comprar sabão",
+                peso = 5,
+                status = AssignmentStatus.PENDENTE.name,
+            ),
+        )
+        val catalog = listOf(
+            Task(id = "t_1", titulo = "Lavar banheiro", peso = 8, frequencia = "SEMANAL", ativa = true),
+            Task(id = "t_2", titulo = "Comprar sabão", peso = 5, frequencia = "QUINZENAL", ativa = true),
+        )
+        val existingInNewWeek = listOf(
+            Assignment(
+                id = AssignmentRepository.catalogAssignmentId("2026-W46", "t_1"),
+                semana = "2026-W46",
+                taskId = "t_1",
+                titulo = "Lavar banheiro",
+                peso = 8,
+            ),
+            Assignment(
+                id = AssignmentRepository.rolloverAssignmentId("2026-W46", "old_pending"),
+                semana = "2026-W46",
+                taskId = "t_2",
+                titulo = "Comprar sabão",
+                peso = 5,
+                ehRollover = true,
+            ),
+        )
+
+        // Rollover existente de t_2 não deve suprimir a instância de catálogo de t_2 na nova semana
+        val partialPlan = AssignmentRepository.buildWeekRolloverPlan(
+            previousWeekKey = "2026-W45",
+            newWeekKey = "2026-W46",
+            previousWeekAssignments = previousAssignments,
+            activeCatalogTasks = catalog,
+            existingNewWeekAssignments = existingInNewWeek,
+            createdByUid = "u_ana",
+        )
+        assertTrue(partialPlan.rolledOverAssignments.isEmpty())
+        assertEquals(listOf("2026-W46_task_t_2"), partialPlan.catalogAssignments.map { it.id })
+
+        // Quando todas as instâncias determinísticas já existem na nova semana, o plano é totalmente idempotente
+        val fullExisting = existingInNewWeek + partialPlan.catalogAssignments
+        val idempotentPlan = AssignmentRepository.buildWeekRolloverPlan(
+            previousWeekKey = "2026-W45",
+            newWeekKey = "2026-W46",
+            previousWeekAssignments = previousAssignments,
+            activeCatalogTasks = catalog,
+            existingNewWeekAssignments = fullExisting,
+            createdByUid = "u_ana",
+        )
+        assertTrue(idempotentPlan.rolledOverAssignments.isEmpty())
+        assertTrue(idempotentPlan.catalogAssignments.isEmpty())
+    }
+
+    @Test
     fun parseWeekNumberHandlesValidAndMalformedKeys() {
         assertEquals(46, DateCycleUtils.parseWeekNumber("2026-W46"))
         assertEquals(1, DateCycleUtils.parseWeekNumber("2026", fallbackWeek = 1))

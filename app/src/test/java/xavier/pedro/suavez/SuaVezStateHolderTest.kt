@@ -1543,7 +1543,7 @@ private class FakeSuaVezDataSource(
         if (editingId == null && createInitialAssignmentInCurrentWeek) {
             val deadlineName = (initialDeadline ?: TaskDeadline.DOMINGO).name
             val initialAssignment = Assignment(
-                id = "assign_${idSeq++}",
+                id = AssignmentRepository.catalogAssignmentId(semanaAtual, task.id),
                 semana = semanaAtual,
                 taskId = task.id,
                 titulo = task.titulo,
