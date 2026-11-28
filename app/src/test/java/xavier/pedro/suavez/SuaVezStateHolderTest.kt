@@ -181,8 +181,6 @@ class SuaVezStateHolderTest {
                 category = TaskCategory.LIMPEZA,
                 points = 8,
                 frequency = TaskFrequency.SEMANAL,
-                openInCurrentWeek = true,
-                deadline = TaskDeadline.SABADO,
             )
             val recurringId = state.uiState.value.recurringTasks.single().id
             state.setPreference(recurringId, PreferenceLevel.ODEIO)
@@ -236,11 +234,9 @@ class SuaVezStateHolderTest {
                 category = TaskCategory.LIMPEZA,
                 points = 5,
                 frequency = TaskFrequency.SEMANAL,
-                openInCurrentWeek = false,
-                deadline = null,
             )
             assertEquals(1, state.uiState.value.recurringTasks.size)
-            assertEquals(0, state.uiState.value.openAssignments.size)
+            assertEquals(1, state.uiState.value.openAssignments.size)
 
             state.saveRecurringTask(
                 editingId = null,
@@ -248,14 +244,11 @@ class SuaVezStateHolderTest {
                 category = TaskCategory.LIMPEZA,
                 points = 5,
                 frequency = TaskFrequency.SEMANAL,
-                openInCurrentWeek = true,
-                deadline = TaskDeadline.SABADO,
             )
             assertEquals(2, state.uiState.value.recurringTasks.size)
-            assertEquals(1, state.uiState.value.openAssignments.size)
-            val opened = state.uiState.value.openAssignments.single()
+            assertEquals(2, state.uiState.value.openAssignments.size)
+            val opened = state.uiState.value.openAssignments.first { it.titulo == "Aspirar sala" }
             assertEquals("Aspirar sala", opened.titulo)
-            assertEquals(TaskDeadline.SABADO, opened.deadline)
 
             val aspirarId = opened.recurringTaskId!!
             state.saveRecurringTask(
@@ -269,11 +262,14 @@ class SuaVezStateHolderTest {
             assertEquals("Aspirar sala e tapete", editedTask.titulo)
             assertEquals(8, editedTask.pontos)
             assertEquals(TaskFrequency.QUINZENAL, editedTask.frequencia)
-            assertEquals("Aspirar sala e tapete", state.uiState.value.openAssignments.single().titulo)
+            assertEquals(
+                "Aspirar sala e tapete",
+                state.uiState.value.openAssignments.first { it.recurringTaskId == aspirarId }.titulo,
+            )
 
             state.deleteRecurringTask(aspirarId)
             assertEquals(1, state.uiState.value.recurringTasks.size)
-            assertTrue(state.uiState.value.openAssignments.isEmpty())
+            assertEquals(1, state.uiState.value.openAssignments.size)
             val deletedAspirar = fake.allTasksForHouse(TEST_HOUSE_ID).first { it.id == aspirarId }
             assertFalse(deletedAspirar.ativa)
 
@@ -284,10 +280,8 @@ class SuaVezStateHolderTest {
                 category = TaskCategory.LIMPEZA,
                 points = 5,
                 frequency = TaskFrequency.SEMANAL,
-                openInCurrentWeek = true,
-                deadline = TaskDeadline.SABADO,
             )
-            val quintalOpen = state.uiState.value.openAssignments.single()
+            val quintalOpen = state.uiState.value.openAssignments.first { it.titulo == "Lavar quintal" }
             val quintalId = quintalOpen.recurringTaskId!!
             state.claimOpenTask(quintalOpen.id)
             state.toggleTaskDone(quintalOpen.id)
@@ -1250,6 +1244,87 @@ class SuaVezStateHolderTest {
             testScope.cancel()
         }
     }
+
+    @Test
+    fun savingRecurringTaskAutoSyncsCurrentWeekOccurrencesAndDeleteScopesWork() = runBlocking {
+        val fake = FakeSuaVezDataSource(initialWeekKey = "2026-W46")
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
+            state.saveRecurringTask(
+                editingId = null,
+                title = "Tirar lixo",
+                category = TaskCategory.LIMPEZA,
+                points = 2,
+                diasSemana = listOf(2, 4, 6), // Seg, Qua, Sex
+                horario = "19:00",
+                intervaloValor = 1,
+                intervaloUnidade = Task.INTERVAL_UNIT_WEEKS,
+            )
+
+            assertEquals(3, state.uiState.value.openAssignments.size)
+            assertEquals(
+                listOf("2026-11-09", "2026-11-11", "2026-11-13"),
+                state.uiState.value.openAssignments.mapNotNull { it.dataAgendada }.sorted(),
+            )
+
+            val taskId = state.uiState.value.recurringTasks.single().id
+            // Editar para apenas Seg e Sex deve remover Qua
+            state.saveRecurringTask(
+                editingId = taskId,
+                title = "Tirar lixo orgânico",
+                category = TaskCategory.LIMPEZA,
+                points = 5,
+                diasSemana = listOf(2, 6),
+                horario = "20:00",
+                intervaloValor = 1,
+                intervaloUnidade = Task.INTERVAL_UNIT_WEEKS,
+            )
+            assertEquals(2, state.uiState.value.openAssignments.size)
+            assertTrue(state.uiState.value.openAssignments.all { it.titulo == "Tirar lixo orgânico" && it.horario == "20:00" })
+
+            // Excluir apenas 1 ocorrência mantém a outra e o catálogo
+            val segId = state.uiState.value.openAssignments.first { it.dataAgendada == "2026-11-09" }.id
+            state.deleteWeeklyAssignment(segId)
+            assertEquals(1, state.uiState.value.openAssignments.size)
+            assertEquals(1, state.uiState.value.recurringTasks.size)
+
+            // Excluir "esta e todas as próximas" remove instância restante e o catálogo
+            val sexId = state.uiState.value.openAssignments.single().id
+            state.deleteRecurringAssignmentAndFuture(sexId)
+            assertTrue(state.uiState.value.openAssignments.isEmpty())
+            assertTrue(state.uiState.value.recurringTasks.isEmpty())
+        } finally {
+            testScope.cancel()
+        }
+    }
+
+    @Test
+    fun addWeeklyTaskWithFutureDateSchedulesIntoTargetIsoWeek() = runBlocking {
+        val fake = FakeSuaVezDataSource(initialWeekKey = "2026-W46")
+        val testScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val state = SuaVezStateHolder(dataSource = fake, scope = testScope)
+        try {
+            state.signInWithGoogleIdToken(ADMIN_TOKEN)
+            state.addWeeklyTask(
+                title = "Pagar IPVA",
+                category = TaskCategory.CONTAS,
+                points = 5,
+                deadline = TaskDeadline.SEM_PRAZO,
+                dataAgendada = "2026-12-02",
+                horario = "14:00",
+            )
+            // Não aparece na semana atual (2026-W46), mas foi gravada na 2026-W49
+            assertTrue(state.uiState.value.openAssignments.isEmpty())
+            assertEquals(
+                listOf("2026-W49"),
+                fake.allAssignments(TEST_HOUSE_ID).map { it.semana },
+            )
+        } finally {
+            testScope.cancel()
+        }
+    }
 }
 
 private class FakeTaskReminderScheduler : TaskReminderScheduler {
@@ -1539,10 +1614,14 @@ private class FakeSuaVezDataSource(
         category: TaskCategory,
         points: Int,
         frequency: TaskFrequency,
+        diasSemana: List<Int>,
+        horario: String?,
+        intervaloValor: Int,
+        intervaloUnidade: String,
+        diaDoMes: Int?,
+        semanaReferencia: String,
         createdByUid: String,
         semanaAtual: String,
-        createInitialAssignmentInCurrentWeek: Boolean,
-        initialDeadline: TaskDeadline?,
     ): Result<Task> = runCatching {
         val clean = title.trim()
         val task = Task(
@@ -1551,6 +1630,12 @@ private class FakeSuaVezDataSource(
             peso = points,
             pesoNivel = TaskWeightLevel.fromPoints(points).name,
             frequencia = frequency.name,
+            diasSemana = diasSemana.filter { it in 1..7 }.distinct(),
+            horario = horario?.trim()?.takeIf { it.isNotEmpty() },
+            intervaloValor = intervaloValor.coerceAtLeast(1),
+            intervaloUnidade = intervaloUnidade.ifBlank { Task.INTERVAL_UNIT_WEEKS },
+            diaDoMes = diaDoMes,
+            semanaReferencia = semanaReferencia.ifBlank { semanaAtual },
             categoriaId = category.name.lowercase(Locale.ROOT),
             categoriaNome = category.label,
             ativa = true,
@@ -1564,39 +1649,50 @@ private class FakeSuaVezDataSource(
         }
         tasksByHouse.value = tasksByHouse.value + (houseId to updatedTasks)
 
-        if (editingId == null && createInitialAssignmentInCurrentWeek) {
-            val deadlineName = (initialDeadline ?: TaskDeadline.DOMINGO).name
-            val initialAssignment = Assignment(
-                id = AssignmentRepository.catalogAssignmentId(semanaAtual, task.id),
+        val occurrences = DateCycleUtils.calculateOccurrencesInWeek(task, semanaAtual)
+        val occSet = occurrences.toSet()
+        val currentAssignments = assignmentsByHouse.value[houseId].orEmpty()
+        val remaining = currentAssignments.mapNotNull { existing ->
+            if (existing.semana == semanaAtual && existing.taskId == task.id) {
+                if (existing.isConcluida()) {
+                    existing
+                } else if (existing.dataAgendada != null && existing.dataAgendada in occSet) {
+                    existing.copy(
+                        titulo = task.titulo,
+                        peso = task.peso,
+                        horario = task.horario,
+                        categoriaId = task.categoriaId,
+                        categoriaNome = task.categoriaNome,
+                    )
+                } else {
+                    null
+                }
+            } else {
+                existing
+            }
+        }
+        val existingDates = remaining
+            .filter { it.semana == semanaAtual && it.taskId == task.id }
+            .mapNotNull { it.dataAgendada }
+            .toSet()
+        val newAssignments = occurrences.filter { it !in existingDates }.map { dateKey ->
+            Assignment(
+                id = DateCycleUtils.buildDeterministicAssignmentId(semanaAtual, task.id, dateKey),
                 semana = semanaAtual,
                 taskId = task.id,
                 titulo = task.titulo,
                 peso = task.peso,
-                deadline = deadlineName,
+                deadline = null,
+                dataAgendada = dateKey,
+                horario = task.horario,
                 categoriaId = task.categoriaId,
                 categoriaNome = task.categoriaNome,
                 status = AssignmentStatus.PENDENTE.name,
                 ehAvulsa = false,
                 criadaPorUid = createdByUid,
             )
-            assignmentsByHouse.value = assignmentsByHouse.value + (
-                houseId to (listOf(initialAssignment) + assignmentsByHouse.value[houseId].orEmpty())
-                )
-        } else if (editingId != null) {
-            val updatedAssignments = assignmentsByHouse.value[houseId].orEmpty().map {
-                if (it.semana == semanaAtual && it.taskId == editingId && !it.isConcluida()) {
-                    it.copy(
-                        titulo = task.titulo,
-                        peso = task.peso,
-                        categoriaId = task.categoriaId,
-                        categoriaNome = task.categoriaNome,
-                    )
-                } else {
-                    it
-                }
-            }
-            assignmentsByHouse.value = assignmentsByHouse.value + (houseId to updatedAssignments)
         }
+        assignmentsByHouse.value = assignmentsByHouse.value + (houseId to (newAssignments + remaining))
         task
     }
 
@@ -1632,19 +1728,25 @@ private class FakeSuaVezDataSource(
         deadline: TaskDeadline,
         createdByUid: String,
         semana: String,
+        dataAgendada: String?,
+        horario: String?,
     ): Result<Assignment> = runCatching {
+        val cleanDate = dataAgendada?.trim()?.takeIf { it.isNotEmpty() }
+        val targetWeek = cleanDate?.let { DateCycleUtils.isoWeekKeyForDate(it) } ?: semana
         val assignment = Assignment(
             id = "assign_${idSeq++}",
-            semana = semana,
+            semana = targetWeek,
             taskId = null,
             titulo = title.trim(),
             peso = points,
-            deadline = deadline.name,
+            deadline = if (cleanDate != null) null else deadline.name,
+            dataAgendada = cleanDate,
+            horario = horario?.trim()?.takeIf { it.isNotEmpty() },
             categoriaId = category.name.lowercase(Locale.ROOT),
             categoriaNome = category.label,
             status = AssignmentStatus.PENDENTE.name,
             ehAvulsa = true,
-            urgente = deadline == TaskDeadline.HOJE,
+            urgente = cleanDate == null && deadline == TaskDeadline.HOJE,
             criadaPorUid = createdByUid,
         )
         assignmentsByHouse.value = assignmentsByHouse.value + (
@@ -1660,17 +1762,23 @@ private class FakeSuaVezDataSource(
         category: TaskCategory,
         points: Int,
         deadline: TaskDeadline,
+        dataAgendada: String?,
+        horario: String?,
     ): Result<Unit> = runCatching {
+        val cleanDate = dataAgendada?.trim()?.takeIf { it.isNotEmpty() }
         assignmentsByHouse.value = assignmentsByHouse.value + (
             houseId to assignmentsByHouse.value[houseId].orEmpty().map { item ->
                 if (item.id == assignmentId) {
                     item.copy(
+                        semana = cleanDate?.let { DateCycleUtils.isoWeekKeyForDate(it) } ?: item.semana,
                         titulo = title.trim(),
                         peso = points,
-                        deadline = deadline.name,
+                        deadline = if (cleanDate != null) null else deadline.name,
+                        dataAgendada = cleanDate,
+                        horario = horario?.trim()?.takeIf { it.isNotEmpty() },
                         categoriaId = category.name.lowercase(Locale.ROOT),
                         categoriaNome = category.label,
-                        urgente = deadline == TaskDeadline.HOJE,
+                        urgente = cleanDate == null && deadline == TaskDeadline.HOJE,
                     )
                 } else {
                     item
@@ -1687,6 +1795,31 @@ private class FakeSuaVezDataSource(
             houseId to assignmentsByHouse.value[houseId].orEmpty().filterNot { it.id == assignmentId }
             )
     }
+
+    override suspend fun deleteRecurringAssignmentAndFuture(
+        houseId: String,
+        assignmentId: String,
+        recurringTaskId: String,
+        fromWeekKey: String,
+        fromDateKey: String?,
+    ): Result<Unit> = runCatching {
+        tasksByHouse.value = tasksByHouse.value + (
+            houseId to tasksByHouse.value[houseId].orEmpty().map {
+                if (it.id == recurringTaskId) it.copy(ativa = false) else it
+            }
+            )
+        assignmentsByHouse.value = assignmentsByHouse.value + (
+            houseId to assignmentsByHouse.value[houseId].orEmpty().filterNot { item ->
+                val isTargetOrFuture = item.id == assignmentId ||
+                    item.semana > fromWeekKey ||
+                    (item.semana == fromWeekKey && (fromDateKey == null || item.dataAgendada == null || item.dataAgendada >= fromDateKey))
+                item.id == assignmentId || (item.taskId == recurringTaskId && !item.isConcluida() && isTargetOrFuture)
+            }
+            )
+    }
+
+    fun allAssignments(houseId: String): List<Assignment> =
+        assignmentsByHouse.value[houseId].orEmpty()
 
     override suspend fun claimOpenTask(
         houseId: String,

@@ -105,23 +105,31 @@ class AssignmentRepository(
         title: String,
         category: TaskCategory,
         points: Int,
-        deadline: TaskDeadline,
+        deadline: TaskDeadline = TaskDeadline.SEM_PRAZO,
         createdByUid: String,
         semana: String = DateCycleUtils.currentIsoWeekKey(),
         descricao: String = "",
+        dataAgendada: String? = null,
+        horario: String? = null,
     ): Result<Assignment> = runCatching {
         val cleanTitle = title.trim()
         require(cleanTitle.isNotEmpty()) { "O título da tarefa não pode ser vazio." }
 
+        val cleanDate = dataAgendada?.trim()?.takeIf { it.isNotEmpty() }
+        val cleanTime = horario?.trim()?.takeIf { it.isNotEmpty() }
+        val targetWeek = cleanDate?.let { DateCycleUtils.isoWeekKeyForDate(it) } ?: semana
+
         val docRef = assignmentsCol(houseId).document()
         val assignment = Assignment(
             id = docRef.id,
-            semana = semana,
+            semana = targetWeek,
             taskId = null,
             titulo = cleanTitle,
             descricao = descricao.trim(),
             peso = points,
-            deadline = deadline.name,
+            deadline = if (cleanDate != null) null else deadline.name,
+            dataAgendada = cleanDate,
+            horario = cleanTime,
             categoriaId = category.name.lowercase(Locale.ROOT),
             categoriaNome = category.label,
             status = AssignmentStatus.PENDENTE.name,
@@ -129,7 +137,7 @@ class AssignmentRepository(
             responsavelNome = null,
             ehAvulsa = true,
             ehRollover = false,
-            urgente = deadline == TaskDeadline.HOJE,
+            urgente = cleanDate == null && deadline == TaskDeadline.HOJE,
             semanaOrigem = null,
             distribuidaAutomaticamente = false,
             criadaPorUid = createdByUid,
@@ -144,23 +152,36 @@ class AssignmentRepository(
         title: String,
         category: TaskCategory,
         points: Int,
-        deadline: TaskDeadline,
+        deadline: TaskDeadline = TaskDeadline.SEM_PRAZO,
+        dataAgendada: String? = null,
+        horario: String? = null,
     ): Result<Unit> = runCatching {
         val cleanTitle = title.trim()
         require(cleanTitle.isNotEmpty()) { "O título da tarefa não pode ser vazio." }
 
+        val cleanDate = dataAgendada?.trim()?.takeIf { it.isNotEmpty() }
+        val cleanTime = horario?.trim()?.takeIf { it.isNotEmpty() }
+
         val docRef = assignmentsCol(houseId).document(assignmentId)
-        val isRollover = docRef.get().await().getBoolean("ehRollover") == true
-        docRef.update(
-            mapOf(
-                "titulo" to cleanTitle,
-                "peso" to points,
-                "deadline" to deadline.name,
-                "categoriaId" to category.name.lowercase(Locale.ROOT),
-                "categoriaNome" to category.label,
-                "urgente" to (isRollover || deadline == TaskDeadline.HOJE),
-            ),
-        ).await()
+        val snap = docRef.get().await()
+        val isRollover = snap.getBoolean("ehRollover") == true
+        val currentWeek = snap.getString("semana").orEmpty()
+        val targetWeek = cleanDate?.let { DateCycleUtils.isoWeekKeyForDate(it) } ?: currentWeek
+
+        val updates = mutableMapOf<String, Any?>(
+            "titulo" to cleanTitle,
+            "peso" to points,
+            "deadline" to if (cleanDate != null) null else deadline.name,
+            "dataAgendada" to cleanDate,
+            "horario" to cleanTime,
+            "categoriaId" to category.name.lowercase(Locale.ROOT),
+            "categoriaNome" to category.label,
+            "urgente" to (isRollover || (cleanDate == null && deadline == TaskDeadline.HOJE)),
+        )
+        if (targetWeek.isNotBlank()) {
+            updates["semana"] = targetWeek
+        }
+        docRef.update(updates).await()
     }
 
     suspend fun deleteAssignment(
@@ -170,6 +191,43 @@ class AssignmentRepository(
         assignmentsCol(houseId).document(assignmentId)
             .delete()
             .await()
+    }
+
+    suspend fun deleteRecurringAssignmentAndFuture(
+        houseId: String,
+        assignmentId: String,
+        recurringTaskId: String,
+        fromWeekKey: String = DateCycleUtils.currentIsoWeekKey(),
+        fromDateKey: String? = null,
+        hardDeleteTask: Boolean = false,
+    ): Result<Unit> = runCatching {
+        val batch = firestore.batch()
+        batch.delete(assignmentsCol(houseId).document(assignmentId))
+
+        val relatedAssignments = assignmentsCol(houseId)
+            .whereEqualTo("taskId", recurringTaskId)
+            .get()
+            .await()
+
+        relatedAssignments.documents.forEach { doc ->
+            val docWeek = doc.getString("semana").orEmpty()
+            val docDate = doc.getString("dataAgendada")
+            val isDone = doc.getString("status") == AssignmentStatus.CONCLUIDA.name
+            val isTargetOrFuture = doc.id == assignmentId ||
+                docWeek > fromWeekKey ||
+                (docWeek == fromWeekKey && (fromDateKey == null || docDate == null || docDate >= fromDateKey))
+            if (!isDone && isTargetOrFuture) {
+                batch.delete(doc.reference)
+            }
+        }
+
+        val taskRef = tasksCol(houseId).document(recurringTaskId)
+        if (hardDeleteTask) {
+            batch.delete(taskRef)
+        } else {
+            batch.update(taskRef, "ativa", false)
+        }
+        batch.commit().await()
     }
 
     suspend fun setTaskCompleted(
@@ -390,6 +448,7 @@ class AssignmentRepository(
             recurringTasks: List<Task>,
             members: List<Member>,
             monthKey: String = DateCycleUtils.currentMonthKey(),
+            targetWeekKey: String? = weekAssignments.firstOrNull()?.semana?.takeIf { it.isNotBlank() },
         ): List<GreedyDecision> {
             if (members.isEmpty()) return emptyList()
 
@@ -398,7 +457,16 @@ class AssignmentRepository(
                 .sortedByDescending { it.peso }
             if (open.isEmpty()) return emptyList()
 
-            val totalCatalogPoints = recurringTasks.sumOf { it.peso }
+            val totalCatalogPoints = recurringTasks.sumOf { task ->
+                val occurrences = if (!targetWeekKey.isNullOrBlank()) {
+                    DateCycleUtils.calculateOccurrencesInWeek(task, targetWeekKey).size
+                } else if (task.diasSemana.isNotEmpty()) {
+                    task.diasSemana.distinct().size
+                } else {
+                    1
+                }
+                task.peso * occurrences
+            }
             val quota = if (totalCatalogPoints > 0) {
                 (totalCatalogPoints.toDouble() / members.size).roundToInt().toDouble()
             } else {
@@ -458,6 +526,43 @@ class AssignmentRepository(
         fun rolloverAssignmentId(weekKey: String, oldAssignmentId: String): String =
             "${weekKey}_rollover_${oldAssignmentId}"
 
+        fun buildRecurringOccurrenceAssignment(
+            weekKey: String,
+            task: Task,
+            dateKey: String,
+            createdByUid: String = "",
+        ): Assignment {
+            val freq = task.frequencia.toTaskFrequency()
+            val deterministicId = if (task.id.isNotBlank()) {
+                DateCycleUtils.buildDeterministicAssignmentId(weekKey, task.id, dateKey)
+            } else {
+                ""
+            }
+            return Assignment(
+                id = deterministicId,
+                semana = weekKey,
+                taskId = task.id,
+                titulo = task.titulo,
+                descricao = task.descricao,
+                peso = task.peso,
+                deadline = if (freq == TaskFrequency.DIARIA) TaskDeadline.HOJE.name else TaskDeadline.DOMINGO.name,
+                dataAgendada = dateKey,
+                horario = task.horario,
+                categoriaId = task.categoriaId,
+                categoriaNome = task.categoriaNome,
+                status = AssignmentStatus.PENDENTE.name,
+                responsavelUid = null,
+                responsavelNome = null,
+                ehAvulsa = false,
+                ehRollover = false,
+                urgente = freq == TaskFrequency.DIARIA,
+                semanaOrigem = null,
+                distribuidaAutomaticamente = false,
+                criadaPorUid = task.criadaPorUid.ifBlank { createdByUid },
+                concluidaEm = null,
+            )
+        }
+
         fun buildWeekRolloverPlan(
             previousWeekKey: String,
             newWeekKey: String,
@@ -493,45 +598,39 @@ class AssignmentRepository(
                 }
                 .filter { it.id.isBlank() || it.id !in existingIds }
 
-            val existingCatalogTaskIds = existingNewWeekAssignments
+            val existingCatalogKeys = existingNewWeekAssignments
                 .filter { !it.ehRollover }
-                .mapNotNull { it.taskId }
+                .flatMap { existing ->
+                    listOfNotNull(
+                        existing.id.takeIf { it.isNotBlank() },
+                        existing.taskId?.let { tid ->
+                            existing.dataAgendada?.let { d -> "${tid}_${d}" } ?: tid
+                        },
+                    )
+                }
                 .toSet()
 
             val catalogInstances = activeCatalogTasks
-                .filter { task ->
-                    task.ativa &&
-                        task.id !in existingCatalogTaskIds &&
-                        (task.id.isBlank() || catalogAssignmentId(newWeekKey, task.id) !in existingIds)
-                }
-                .mapIndexed { index, task ->
-                    val freq = task.frequencia.toTaskFrequency()
-                    val defaultDeadline = when {
-                        freq == TaskFrequency.DIARIA -> TaskDeadline.HOJE
-                        index == 0 -> TaskDeadline.SABADO
-                        else -> TaskDeadline.DOMINGO
+                .filter { it.ativa }
+                .flatMap { task ->
+                    val occurrences = DateCycleUtils.calculateOccurrencesInWeek(task, newWeekKey)
+                    occurrences.mapNotNull { dateKey ->
+                        val deterministicId = if (task.id.isNotBlank()) {
+                            DateCycleUtils.buildDeterministicAssignmentId(newWeekKey, task.id, dateKey)
+                        } else {
+                            ""
+                        }
+                        val legacyId = if (task.id.isNotBlank()) catalogAssignmentId(newWeekKey, task.id) else ""
+                        val alreadyExists = deterministicId in existingIds ||
+                            deterministicId in existingCatalogKeys ||
+                            "${task.id}_${dateKey}" in existingCatalogKeys ||
+                            (occurrences.size == 1 && (legacyId in existingIds || task.id in existingCatalogKeys))
+                        if (alreadyExists) {
+                            null
+                        } else {
+                            buildRecurringOccurrenceAssignment(newWeekKey, task, dateKey, createdByUid)
+                        }
                     }
-                    Assignment(
-                        id = if (task.id.isNotBlank()) catalogAssignmentId(newWeekKey, task.id) else "",
-                        semana = newWeekKey,
-                        taskId = task.id,
-                        titulo = task.titulo,
-                        descricao = task.descricao,
-                        peso = task.peso,
-                        deadline = defaultDeadline.name,
-                        categoriaId = task.categoriaId,
-                        categoriaNome = task.categoriaNome,
-                        status = AssignmentStatus.PENDENTE.name,
-                        responsavelUid = null,
-                        responsavelNome = null,
-                        ehAvulsa = false,
-                        ehRollover = false,
-                        urgente = freq == TaskFrequency.DIARIA,
-                        semanaOrigem = null,
-                        distribuidaAutomaticamente = false,
-                        criadaPorUid = task.criadaPorUid.ifBlank { createdByUid },
-                        concluidaEm = null,
-                    )
                 }
 
             return RolloverPlan(

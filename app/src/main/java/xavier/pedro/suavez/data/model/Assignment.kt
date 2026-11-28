@@ -13,6 +13,8 @@ data class Assignment(
     val descricao: String = "",
     val peso: Int = TaskWeightLevel.MEDIUM.points,
     val deadline: String? = null,
+    val dataAgendada: String? = null,
+    val horario: String? = null,
     val categoriaId: String = "",
     val categoriaNome: String = "",
     val status: String = AssignmentStatus.PENDENTE.name,

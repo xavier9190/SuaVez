@@ -99,7 +99,13 @@ Catálogo base de tarefas recorrentes que se repetem a cada semana. Gerenciado e
 | `descricao` | `String` | Instruções ou detalhes adicionais |
 | `peso` | `Int` | Pontuação da tarefa: 2 (Leve), 5 (Média) ou 8 (Pesada) |
 | `pesoNivel` | `String` | Nível selecionado: `"LIGHT"`, `"MEDIUM"` ou `"HEAVY"` |
-| `frequencia` | `String` | Frequência de repetição: `"DIARIA"`, `"SEMANAL"`, `"QUINZENAL"` ou `"MENSAL"` |
+| `frequencia` | `String` | Frequência legada de repetição: `"DIARIA"`, `"SEMANAL"`, `"QUINZENAL"` ou `"MENSAL"` |
+| `diasSemana` | `List<Int>` | Dias da semana em que ocorre (`1 = Domingo .. 7 = Sábado`, padrão Relógio do Google) |
+| `horario` | `String?` | Horário programado opcional no formato `"HH:mm"` |
+| `intervaloValor` | `Int` | Intervalo de repetição (padrão `1`) |
+| `intervaloUnidade` | `String` | Unidade do intervalo: `"SEMANAS"` ou `"MESES"` |
+| `diaDoMes` | `Int?` | Dia do mês (`1..31`) quando `intervaloUnidade == "MESES"` |
+| `semanaReferencia` | `String` | Semana ISO (`"YYYY-Www"`) ou data base (`"YYYY-MM-DD"`) para cálculo de intervalos `> 1` |
 | `categoriaId` | `String` | ID da categoria associada |
 | `categoriaNome` | `String` | Nome da categoria denormalizado para leitura rápida |
 | `ativa` | `Boolean` | Se a tarefa está ativa para entrar na geração semanal |
@@ -113,13 +119,15 @@ Tarefas específicas de uma semana determinada, com dados desnormalizados para q
 
 | Campo | Tipo | Descrição |
 |---|---|---|
-| `id` | `String` | ID único da atribuição na semana |
+| `id` | `String` | ID único da atribuição na semana (para instâncias recorrentes: `${weekKey}_task_${taskId}_${dateKey}`) |
 | `semana` | `String` | Chave da semana civil ISO (ex: `"2026-W46"`) |
 | `taskId` | `String?` | ID da tarefa no catálogo base (nulo se for tarefa avulsa) |
 | `titulo` | `String` | Título da tarefa |
 | `descricao` | `String` | Detalhes adicionais |
 | `peso` | `Int` | Pontos atribuídos à tarefa (2, 5 ou 8) |
-| `deadline` | `String?` | Prazo da tarefa na semana: `"HOJE"`, `"SABADO"`, `"DOMINGO"` ou `"SEM_PRAZO"` |
+| `deadline` | `String?` | Prazo legado da tarefa na semana: `"HOJE"`, `"SABADO"`, `"DOMINGO"` ou `"SEM_PRAZO"` |
+| `dataAgendada` | `String?` | Data agendada específica no formato `"YYYY-MM-DD"` (opcional) |
+| `horario` | `String?` | Horário agendado no formato `"HH:mm"` (opcional) |
 | `categoriaId` | `String` | ID da categoria |
 | `categoriaNome` | `String` | Nome da categoria |
 | `status` | `String` | Estado: `"PENDENTE"`, `"ATRIBUIDA"` ou `"CONCLUIDA"` |
@@ -155,8 +163,9 @@ stateDiagram-v2
 - O app verifica o código da semana civil ISO atual (ex: `2026-W46`).
 - Se a casa ainda estiver com `semanaAtual` apontando para a semana anterior:
   1. As tarefas não concluídas (`status != "CONCLUIDA"`) são transferidas para a nova semana com `ehRollover = true`, `urgente = true`, `status = "PENDENTE"` e `responsavelUid = null`.
-  2. As tarefas ativas do catálogo (`tasks`) que ainda não existem na nova semana são instanciadas como `PENDENTE`.
+  2. As tarefas ativas do catálogo (`tasks`) têm suas ocorrências na nova semana calculadas (`diasSemana`, `intervaloValor`, `intervaloUnidade`, `diaDoMes`), gerando **1 instância independente de `Assignment` por ocorrência** com ID determinístico `${weekKey}_task_${taskId}_${dateKey}`.
   3. O campo `houses/{houseId}.semanaAtual` é atualizado para a nova semana.
+- A exclusão de uma instância recorrente suporta dois escopos: **apenas esta instância** (remove somente o `Assignment` selecionado) ou **esta e todas as próximas** (remove a instância atual e futuras ocorrências não concluídas daquela `taskId`, além de encerrar a `Task` recorrente no catálogo).
 
 ### 3. Conclusão e Pontuação Mensal
 Quando um morador conclui uma tarefa:

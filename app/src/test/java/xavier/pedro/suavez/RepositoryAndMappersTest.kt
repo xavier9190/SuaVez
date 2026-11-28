@@ -31,6 +31,9 @@ import xavier.pedro.suavez.data.repository.toUiUser
 import xavier.pedro.suavez.ui.state.TaskCategory
 import xavier.pedro.suavez.ui.state.TaskDeadline
 import xavier.pedro.suavez.ui.state.TaskFrequency
+import xavier.pedro.suavez.ui.state.UiAssignment
+import xavier.pedro.suavez.ui.state.UiRecurringTask
+import xavier.pedro.suavez.ui.state.calculateWeeklyQuota
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.Date
@@ -238,8 +241,8 @@ class RepositoryAndMappersTest {
 
         // Apenas t_1 e t_2 estão ativas no catálogo
         assertEquals(2, plan.catalogAssignments.size)
-        assertEquals("2026-W46_task_t_1", plan.catalogAssignments[0].id)
-        assertEquals("2026-W46_task_t_2", plan.catalogAssignments[1].id)
+        assertEquals("2026-W46_task_t_1_2026-11-15", plan.catalogAssignments[0].id)
+        assertEquals("2026-W46_task_t_2_2026-11-15", plan.catalogAssignments[1].id)
     }
 
     @Test
@@ -289,7 +292,7 @@ class RepositoryAndMappersTest {
             createdByUid = "u_ana",
         )
         assertTrue(partialPlan.rolledOverAssignments.isEmpty())
-        assertEquals(listOf("2026-W46_task_t_2"), partialPlan.catalogAssignments.map { it.id })
+        assertEquals(listOf("2026-W46_task_t_2_2026-11-15"), partialPlan.catalogAssignments.map { it.id })
 
         // Quando todas as instâncias determinísticas já existem na nova semana, o plano é totalmente idempotente
         val fullExisting = existingInNewWeek + partialPlan.catalogAssignments
@@ -504,5 +507,226 @@ class RepositoryAndMappersTest {
             ),
             HouseRepository.reopenedAssignmentUpdateMap(),
         )
+    }
+
+    @Test
+    fun taskAndUiRecurringTaskRoundTripPreservesScheduleFieldsAndLegacyDefaults() {
+        val task = Task(
+            id = "t_sched",
+            titulo = "Regar plantas",
+            peso = 2,
+            pesoNivel = TaskWeightLevel.LIGHT.name,
+            frequencia = "SEMANAL",
+            diasSemana = listOf(2, 4, 6),
+            horario = "19:00",
+            intervaloValor = 2,
+            intervaloUnidade = Task.INTERVAL_UNIT_WEEKS,
+            diaDoMes = null,
+            semanaReferencia = "2026-W46",
+            categoriaId = "outras",
+            categoriaNome = "Outras",
+        )
+        val ui = task.toUiRecurringTask()
+        assertEquals(listOf(2, 4, 6), ui.diasSemana)
+        assertEquals("19:00", ui.horario)
+        assertEquals(2, ui.intervaloValor)
+        assertEquals(Task.INTERVAL_UNIT_WEEKS, ui.intervaloUnidade)
+        assertNull(ui.diaDoMes)
+        assertEquals("2026-W46", ui.semanaReferencia)
+
+        val roundTrip = ui.toFirestoreTask(criadaPorUid = "u_1")
+        assertEquals(listOf(2, 4, 6), roundTrip.diasSemana)
+        assertEquals("19:00", roundTrip.horario)
+        assertEquals(2, roundTrip.intervaloValor)
+        assertEquals(Task.INTERVAL_UNIT_WEEKS, roundTrip.intervaloUnidade)
+        assertEquals("2026-W46", roundTrip.semanaReferencia)
+    }
+
+    @Test
+    fun assignmentMetaLabelFormatsWeekdayDateHorarioAndFallback() {
+        val recurringInstance = Assignment(
+            id = "2026-W46_task_t1_2026-11-11",
+            semana = "2026-W46",
+            taskId = "t1",
+            titulo = "Lavar louça",
+            peso = 2,
+            dataAgendada = "2026-11-11",
+            horario = "19:00",
+            categoriaId = "limpeza",
+            categoriaNome = "Limpeza",
+        ).toUiAssignment()
+        assertEquals("Limpeza · Qua, 19:00", recurringInstance.metaLabel())
+
+        val oneOffCalendar = Assignment(
+            id = "a_cal",
+            semana = "2026-W50",
+            taskId = null,
+            titulo = "Pagar luz",
+            peso = 2,
+            dataAgendada = "2026-12-10",
+            horario = "14:00",
+            categoriaId = "contas",
+            categoriaNome = "Contas",
+            ehAvulsa = true,
+        ).toUiAssignment()
+        assertEquals("Contas · 10/12 · 14:00", oneOffCalendar.metaLabel())
+
+        val noDeadline = UiAssignment(
+            id = "a_none",
+            recurringTaskId = null,
+            titulo = "Organizar",
+            categoria = TaskCategory.LIMPEZA,
+            pontos = 2,
+            deadline = null,
+            assigneeUid = null,
+        )
+        assertEquals("Limpeza · sem prazo", noDeadline.metaLabel())
+    }
+
+    @Test
+    fun isoWeekKeyForDateHandlesFutureDatesAndYearBoundary() {
+        assertEquals("2026-W49", DateCycleUtils.isoWeekKeyForDate("2026-12-02"))
+        assertEquals("2026-W01", DateCycleUtils.isoWeekKeyForDate("2026-01-01"))
+        assertEquals("2026-W01", DateCycleUtils.isoWeekKeyForDate("2025-12-29"))
+        assertNull(DateCycleUtils.isoWeekKeyForDate("2026-13-45"))
+        assertNull(DateCycleUtils.isoWeekKeyForDate("invalid"))
+    }
+
+    @Test
+    fun calculateOccurrencesInWeekHandlesWeeklyBiweeklyAndMonthlySchedules() {
+        val weeklyMulti = Task(
+            id = "t_w",
+            titulo = "Lixo",
+            diasSemana = listOf(2, 4, 6), // Seg, Qua, Sex
+            intervaloValor = 1,
+            intervaloUnidade = Task.INTERVAL_UNIT_WEEKS,
+            ativa = true,
+        )
+        assertEquals(
+            listOf("2026-11-09", "2026-11-11", "2026-11-13"),
+            DateCycleUtils.calculateOccurrencesInWeek(weeklyMulti, "2026-W46"),
+        )
+
+        val biweekly = Task(
+            id = "t_bw",
+            titulo = "Banheiro",
+            diasSemana = listOf(7), // Sábado
+            intervaloValor = 2,
+            intervaloUnidade = Task.INTERVAL_UNIT_WEEKS,
+            semanaReferencia = "2026-W46",
+            ativa = true,
+        )
+        assertEquals(listOf("2026-11-14"), DateCycleUtils.calculateOccurrencesInWeek(biweekly, "2026-W46"))
+        assertEquals(emptyList<String>(), DateCycleUtils.calculateOccurrencesInWeek(biweekly, "2026-W47"))
+        assertEquals(listOf("2026-11-28"), DateCycleUtils.calculateOccurrencesInWeek(biweekly, "2026-W48"))
+
+        val monthlyDay10 = Task(
+            id = "t_m",
+            titulo = "Contas",
+            intervaloValor = 1,
+            intervaloUnidade = Task.INTERVAL_UNIT_MONTHS,
+            diaDoMes = 10,
+            semanaReferencia = "2026-W46",
+            ativa = true,
+        )
+        assertEquals(listOf("2026-11-10"), DateCycleUtils.calculateOccurrencesInWeek(monthlyDay10, "2026-W46"))
+        assertEquals(emptyList<String>(), DateCycleUtils.calculateOccurrencesInWeek(monthlyDay10, "2026-W47"))
+
+        val monthlyDay31 = Task(
+            id = "t_m31",
+            titulo = "Fechar mês",
+            intervaloValor = 2,
+            intervaloUnidade = Task.INTERVAL_UNIT_MONTHS,
+            diaDoMes = 31,
+            semanaReferencia = "2025-12-31",
+            ativa = true,
+        )
+        // Fevereiro 2026 (W09: 2026-02-23..2026-03-01) tem 28 dias e intervalo=2 a partir de dez/2025 -> 2026-02-28
+        assertEquals(listOf("2026-02-28"), DateCycleUtils.calculateOccurrencesInWeek(monthlyDay31, "2026-W09"))
+        // Janeiro 2026 (W05: 2026-01-26..2026-02-01) tem diffMonths=1 -> não ocorre
+        assertEquals(emptyList<String>(), DateCycleUtils.calculateOccurrencesInWeek(monthlyDay31, "2026-W05"))
+        // Virada de ano ISO em isoWeeksBetween
+        assertEquals(2, DateCycleUtils.isoWeeksBetween("2025-W52", "2026-W02"))
+    }
+
+    @Test
+    fun weekRolloverGeneratesOneAssignmentPerOccurrenceWithDeterministicIds() {
+        val catalog = listOf(
+            Task(
+                id = "t_multi",
+                titulo = "Tirar lixo",
+                peso = 2,
+                diasSemana = listOf(2, 4, 6),
+                horario = "19:00",
+                intervaloValor = 1,
+                intervaloUnidade = Task.INTERVAL_UNIT_WEEKS,
+                ativa = true,
+            ),
+        )
+        val existing = listOf(
+            Assignment(
+                id = "2026-W46_task_t_multi_2026-11-09",
+                semana = "2026-W46",
+                taskId = "t_multi",
+                dataAgendada = "2026-11-09",
+            ),
+        )
+
+        val plan = AssignmentRepository.buildWeekRolloverPlan(
+            previousWeekKey = "2026-W45",
+            newWeekKey = "2026-W46",
+            previousWeekAssignments = emptyList(),
+            activeCatalogTasks = catalog,
+            existingNewWeekAssignments = existing,
+            createdByUid = "u_admin",
+        )
+
+        assertEquals(2, plan.catalogAssignments.size)
+        assertEquals(
+            listOf(
+                "2026-W46_task_t_multi_2026-11-11",
+                "2026-W46_task_t_multi_2026-11-13",
+            ),
+            plan.catalogAssignments.map { it.id },
+        )
+        assertEquals(listOf("2026-11-11", "2026-11-13"), plan.catalogAssignments.map { it.dataAgendada })
+        assertTrue(plan.catalogAssignments.all { it.horario == "19:00" })
+    }
+
+    @Test
+    fun weeklyQuotaAndGreedyDistributionAccountForMultipleOccurrences() {
+        val recurring = UiRecurringTask(
+            id = "t_multi",
+            titulo = "Tirar lixo",
+            categoria = TaskCategory.LIMPEZA,
+            pontos = 5,
+            diasSemana = listOf(2, 4, 6),
+            intervaloValor = 1,
+            intervaloUnidade = Task.INTERVAL_UNIT_WEEKS,
+            semanaReferencia = "2026-W46",
+        )
+        // 5 pts * 3 ocorrências = 15 pts / 3 moradores = 5 pts
+        assertEquals(5, calculateWeeklyQuota(listOf(recurring), memberCount = 3, targetWeekKey = "2026-W46"))
+
+        val members = listOf(
+            Member(uid = "u_1", nome = "Ana"),
+            Member(uid = "u_2", nome = "Bruno"),
+            Member(uid = "u_3", nome = "Carla"),
+        )
+        val openAssignments = listOf(
+            Assignment(id = "a1", semana = "2026-W46", taskId = "t_multi", titulo = "Tirar lixo", peso = 5, status = "PENDENTE"),
+            Assignment(id = "a2", semana = "2026-W46", taskId = "t_multi", titulo = "Tirar lixo", peso = 5, status = "PENDENTE"),
+            Assignment(id = "a3", semana = "2026-W46", taskId = "t_multi", titulo = "Tirar lixo", peso = 5, status = "PENDENTE"),
+        )
+
+        val decisions = AssignmentRepository.computeGreedyDistribution(
+            weekAssignments = openAssignments,
+            recurringTasks = listOf(recurring.toFirestoreTask()),
+            members = members,
+            monthKey = "2026-11",
+            targetWeekKey = "2026-W46",
+        )
+        assertEquals(3, decisions.size)
+        assertEquals(setOf("u_1", "u_2", "u_3"), decisions.map { it.memberUid }.toSet())
     }
 }

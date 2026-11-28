@@ -87,12 +87,16 @@ class TaskRepository(
         title: String,
         category: TaskCategory,
         points: Int,
-        frequency: TaskFrequency,
+        frequency: TaskFrequency = TaskFrequency.SEMANAL,
+        diasSemana: List<Int> = emptyList(),
+        horario: String? = null,
+        intervaloValor: Int = 1,
+        intervaloUnidade: String = Task.INTERVAL_UNIT_WEEKS,
+        diaDoMes: Int? = null,
+        semanaReferencia: String = DateCycleUtils.currentIsoWeekKey(),
         createdByUid: String,
         descricao: String = "",
         semanaAtual: String = DateCycleUtils.currentIsoWeekKey(),
-        createInitialAssignmentInCurrentWeek: Boolean = true,
-        initialDeadline: TaskDeadline? = null,
     ): Result<Task> = runCatching {
         val cleanTitle = title.trim()
         require(cleanTitle.isNotEmpty()) { "O título da tarefa recorrente não pode ser vazio." }
@@ -100,108 +104,114 @@ class TaskRepository(
         val weightLevel = TaskWeightLevel.fromPoints(points)
         val categoriaId = category.name.lowercase(Locale.ROOT)
         val categoriaNome = category.label
+        val normalizedDays = diasSemana.filter { it in 1..7 }.distinct()
+        val normalizedTime = horario?.trim()?.takeIf { it.isNotEmpty() }
+        val normalizedInterval = intervaloValor.coerceAtLeast(1)
+        val normalizedUnit = intervaloUnidade.ifBlank { Task.INTERVAL_UNIT_WEEKS }
+        val normalizedRef = semanaReferencia.ifBlank { semanaAtual }
+        val taskId = editingId?.takeIf { it.isNotBlank() } ?: tasksCol(houseId).document().id
+        val taskDoc = tasksCol(houseId).document(taskId)
+        val savedTask = Task(
+            id = taskId,
+            titulo = cleanTitle,
+            descricao = descricao.trim(),
+            peso = points,
+            pesoNivel = weightLevel.name,
+            frequencia = frequency.name,
+            diasSemana = normalizedDays,
+            horario = normalizedTime,
+            intervaloValor = normalizedInterval,
+            intervaloUnidade = normalizedUnit,
+            diaDoMes = diaDoMes,
+            semanaReferencia = normalizedRef,
+            categoriaId = categoriaId,
+            categoriaNome = categoriaNome,
+            ativa = true,
+            criadaPorUid = createdByUid,
+        )
+        val occurrences = DateCycleUtils.calculateOccurrencesInWeek(savedTask, semanaAtual)
+        val batch = firestore.batch()
 
         if (editingId.isNullOrBlank()) {
-            val taskDoc = tasksCol(houseId).document()
-            val newTask = Task(
-                id = taskDoc.id,
-                titulo = cleanTitle,
-                descricao = descricao.trim(),
-                peso = points,
-                pesoNivel = weightLevel.name,
-                frequencia = frequency.name,
-                categoriaId = categoriaId,
-                categoriaNome = categoriaNome,
-                ativa = true,
-                criadaPorUid = createdByUid,
-            )
-
-            val batch = firestore.batch()
-            batch.set(taskDoc, newTask)
-
-            if (createInitialAssignmentInCurrentWeek) {
-                val deterministicId = AssignmentRepository.catalogAssignmentId(semanaAtual, newTask.id)
-                val assignmentDoc = assignmentsCol(houseId).document(deterministicId)
-                val defaultDeadline = initialDeadline?.name ?: when (frequency) {
-                    TaskFrequency.DIARIA -> TaskDeadline.HOJE.name
-                    else -> TaskDeadline.DOMINGO.name
-                }
-                val initialAssignment = Assignment(
-                    id = assignmentDoc.id,
-                    semana = semanaAtual,
-                    taskId = newTask.id,
-                    titulo = newTask.titulo,
-                    descricao = newTask.descricao,
-                    peso = newTask.peso,
-                    deadline = defaultDeadline,
-                    categoriaId = newTask.categoriaId,
-                    categoriaNome = newTask.categoriaNome,
-                    status = AssignmentStatus.PENDENTE.name,
-                    responsavelUid = null,
-                    responsavelNome = null,
-                    ehAvulsa = false,
-                    ehRollover = false,
-                    urgente = frequency == TaskFrequency.DIARIA,
-                    semanaOrigem = null,
-                    distribuidaAutomaticamente = false,
-                    criadaPorUid = createdByUid,
+            batch.set(taskDoc, savedTask)
+            occurrences.forEach { dateKey ->
+                val assignment = AssignmentRepository.buildRecurringOccurrenceAssignment(
+                    weekKey = semanaAtual,
+                    task = savedTask,
+                    dateKey = dateKey,
+                    createdByUid = createdByUid,
                 )
-                batch.set(assignmentDoc, initialAssignment)
+                batch.set(assignmentsCol(houseId).document(assignment.id), assignment)
             }
-
-            batch.commit().await()
-            newTask
         } else {
-            val taskDoc = tasksCol(houseId).document(editingId)
             val updates = mapOf(
                 "titulo" to cleanTitle,
                 "descricao" to descricao.trim(),
                 "peso" to points,
                 "pesoNivel" to weightLevel.name,
                 "frequencia" to frequency.name,
+                "diasSemana" to normalizedDays,
+                "horario" to normalizedTime,
+                "intervaloValor" to normalizedInterval,
+                "intervaloUnidade" to normalizedUnit,
+                "diaDoMes" to diaDoMes,
+                "semanaReferencia" to normalizedRef,
                 "categoriaId" to categoriaId,
                 "categoriaNome" to categoriaNome,
             )
-
-            val batch = firestore.batch()
             batch.set(taskDoc, updates, SetOptions.merge())
 
-            // Sincronizar atribuições ainda não concluídas da semana atual vinculadas a esta tarefa recorrente
+            val occurrenceSet = occurrences.toSet()
             val currentWeekAssignments = assignmentsCol(houseId)
                 .whereEqualTo("semana", semanaAtual)
                 .whereEqualTo("taskId", editingId)
                 .get()
                 .await()
 
+            val existingByDate = mutableMapOf<String, String>()
             currentWeekAssignments.documents.forEach { doc ->
-                if (doc.getString("status") != AssignmentStatus.CONCLUIDA.name) {
-                    batch.update(
-                        doc.reference,
-                        mapOf(
-                            "titulo" to cleanTitle,
-                            "peso" to points,
-                            "categoriaId" to categoriaId,
-                            "categoriaNome" to categoriaNome,
-                        ),
-                    )
+                val rawDate = doc.getString("dataAgendada")
+                // Preserva atribuição legada sem dataAgendada quando há 1 ocorrência prevista
+                val matchedDate = when {
+                    rawDate != null && rawDate in occurrenceSet -> rawDate
+                    rawDate == null && occurrences.size == 1 && occurrences.first() !in existingByDate -> occurrences.first()
+                    else -> null
+                }
+                val isDone = doc.getString("status") == AssignmentStatus.CONCLUIDA.name
+                if (matchedDate != null) {
+                    existingByDate[matchedDate] = doc.id
+                    if (!isDone) {
+                        batch.update(
+                            doc.reference,
+                            mapOf(
+                                "titulo" to cleanTitle,
+                                "descricao" to descricao.trim(),
+                                "peso" to points,
+                                "dataAgendada" to matchedDate,
+                                "horario" to normalizedTime,
+                                "categoriaId" to categoriaId,
+                                "categoriaNome" to categoriaNome,
+                            ),
+                        )
+                    }
+                } else if (!isDone) {
+                    batch.delete(doc.reference)
                 }
             }
 
-            batch.commit().await()
-
-            Task(
-                id = editingId,
-                titulo = cleanTitle,
-                descricao = descricao.trim(),
-                peso = points,
-                pesoNivel = weightLevel.name,
-                frequencia = frequency.name,
-                categoriaId = categoriaId,
-                categoriaNome = categoriaNome,
-                ativa = true,
-                criadaPorUid = createdByUid,
-            )
+            occurrences.filter { it !in existingByDate }.forEach { dateKey ->
+                val assignment = AssignmentRepository.buildRecurringOccurrenceAssignment(
+                    weekKey = semanaAtual,
+                    task = savedTask,
+                    dateKey = dateKey,
+                    createdByUid = createdByUid,
+                )
+                batch.set(assignmentsCol(houseId).document(assignment.id), assignment)
+            }
         }
+
+        batch.commit().await()
+        savedTask
     }
 
     suspend fun deleteRecurringTask(
