@@ -1450,13 +1450,14 @@ private class FakeSuaVezDataSource(
     }
 
     override suspend fun removeMember(houseId: String, memberUid: String): Result<Unit> = runCatching {
+        val currentWeek = houses.value[houseId]?.semanaAtual ?: DateCycleUtils.currentIsoWeekKey()
         membersByHouse.value = membersByHouse.value + (
             houseId to membersByHouse.value[houseId].orEmpty().filterNot { it.uid == memberUid }
             )
         assignmentsByHouse.value = assignmentsByHouse.value + (
             houseId to assignmentsByHouse.value[houseId].orEmpty().map {
-                if (it.responsavelUid == memberUid && !it.isConcluida()) {
-                    it.copy(responsavelUid = null, responsavelNome = null, status = AssignmentStatus.PENDENTE.name)
+                if (HouseRepository.shouldReopenAssignmentOnMemberRemoval(it, memberUid, currentWeek)) {
+                    HouseRepository.reopenAssignmentOnMemberRemoval(it)
                 } else {
                     it
                 }

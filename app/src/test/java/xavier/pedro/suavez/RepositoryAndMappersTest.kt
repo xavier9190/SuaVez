@@ -441,4 +441,68 @@ class RepositoryAndMappersTest {
             DateCycleUtils.computeReminderTriggerAtMillis("2025-W53", TaskDeadline.SABADO, beforeYearStart, timeZone),
         )
     }
+
+    @Test
+    fun memberRemovalReopensOnlyUnfinishedAssignmentsFromCurrentWeekAndResetsAutoDistribution() {
+        val currentWeek = "2026-W46"
+        val removedUid = "u_bruno"
+
+        val autoAssignedCurrent = Assignment(
+            id = "a_1",
+            semana = currentWeek,
+            titulo = "Lavar banheiro",
+            status = AssignmentStatus.ATRIBUIDA.name,
+            responsavelUid = removedUid,
+            responsavelNome = "Bruno",
+            distribuidaAutomaticamente = true,
+        )
+        val completedCurrent = Assignment(
+            id = "a_2",
+            semana = currentWeek,
+            titulo = "Tirar lixo",
+            status = AssignmentStatus.CONCLUIDA.name,
+            responsavelUid = removedUid,
+            responsavelNome = "Bruno",
+            distribuidaAutomaticamente = true,
+        )
+        val previousWeekPending = Assignment(
+            id = "a_3",
+            semana = "2026-W45",
+            titulo = "Passar pano",
+            status = AssignmentStatus.ATRIBUIDA.name,
+            responsavelUid = removedUid,
+            responsavelNome = "Bruno",
+            distribuidaAutomaticamente = true,
+        )
+        val otherMemberCurrent = Assignment(
+            id = "a_4",
+            semana = currentWeek,
+            titulo = "Lavar louça",
+            status = AssignmentStatus.ATRIBUIDA.name,
+            responsavelUid = "u_ana",
+            responsavelNome = "Ana",
+            distribuidaAutomaticamente = true,
+        )
+
+        assertTrue(HouseRepository.shouldReopenAssignmentOnMemberRemoval(autoAssignedCurrent, removedUid, currentWeek))
+        assertFalse(HouseRepository.shouldReopenAssignmentOnMemberRemoval(completedCurrent, removedUid, currentWeek))
+        assertFalse(HouseRepository.shouldReopenAssignmentOnMemberRemoval(previousWeekPending, removedUid, currentWeek))
+        assertFalse(HouseRepository.shouldReopenAssignmentOnMemberRemoval(otherMemberCurrent, removedUid, currentWeek))
+
+        val reopened = HouseRepository.reopenAssignmentOnMemberRemoval(autoAssignedCurrent)
+        assertNull(reopened.responsavelUid)
+        assertNull(reopened.responsavelNome)
+        assertEquals(AssignmentStatus.PENDENTE.name, reopened.status)
+        assertFalse(reopened.distribuidaAutomaticamente)
+
+        assertEquals(
+            mapOf(
+                "responsavelUid" to null,
+                "responsavelNome" to null,
+                "status" to AssignmentStatus.PENDENTE.name,
+                "distribuidaAutomaticamente" to false,
+            ),
+            HouseRepository.reopenedAssignmentUpdateMap(),
+        )
+    }
 }

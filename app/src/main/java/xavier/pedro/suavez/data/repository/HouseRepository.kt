@@ -8,6 +8,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
+import xavier.pedro.suavez.data.model.Assignment
 import xavier.pedro.suavez.data.model.AssignmentStatus
 import xavier.pedro.suavez.data.model.House
 import xavier.pedro.suavez.data.model.HouseRole
@@ -162,45 +163,53 @@ class HouseRepository(
 
         val houseDoc = housesCollection.document(house.id)
         val memberDoc = houseDoc.collection(SUBCOLLECTION_MEMBERS).document(user.uid)
-        val existingMember = memberDoc.get().await()
+        val userDoc = usersCollection.document(user.uid)
 
-        val batch = firestore.batch()
-        if (!existingMember.exists()) {
-            val newMember = Member(
-                uid = user.uid,
-                nome = user.nome,
-                fotoUrl = user.fotoUrl,
-                papel = HouseRole.MEMBER.name,
-                pontosPorMes = mapOf(monthKey to 0),
-                preferences = emptyMap(),
-            )
-            batch.set(memberDoc, newMember)
-        } else {
-            batch.set(
-                memberDoc,
+        firestore.runTransaction { transaction ->
+            // Reads-before-writes obrigatório no SDK do Firestore
+            val freshHouseSnap = transaction.get(houseDoc)
+            val freshHouse = freshHouseSnap.toObject(House::class.java)?.copy(id = freshHouseSnap.id)
+                ?: error("A casa informada não está mais disponível.")
+            check(freshHouse.codigoConvite == normalizeInviteCode(inviteCode)) {
+                "O código de convite não é mais válido."
+            }
+            val existingMember = transaction.get(memberDoc)
+
+            if (!existingMember.exists()) {
+                val newMember = Member(
+                    uid = user.uid,
+                    nome = user.nome,
+                    fotoUrl = user.fotoUrl,
+                    papel = HouseRole.MEMBER.name,
+                    pontosPorMes = mapOf(monthKey to 0),
+                    preferences = emptyMap(),
+                )
+                transaction.set(memberDoc, newMember)
+            } else {
+                transaction.set(
+                    memberDoc,
+                    mapOf(
+                        "nome" to user.nome,
+                        "fotoUrl" to user.fotoUrl,
+                    ),
+                    SetOptions.merge(),
+                )
+            }
+
+            transaction.set(
+                userDoc,
                 mapOf(
+                    "uid" to user.uid,
                     "nome" to user.nome,
+                    "email" to user.email,
                     "fotoUrl" to user.fotoUrl,
+                    "currentHouseId" to freshHouse.id,
                 ),
                 SetOptions.merge(),
             )
-        }
 
-        val userDoc = usersCollection.document(user.uid)
-        batch.set(
-            userDoc,
-            mapOf(
-                "uid" to user.uid,
-                "nome" to user.nome,
-                "email" to user.email,
-                "fotoUrl" to user.fotoUrl,
-                "currentHouseId" to house.id,
-            ),
-            SetOptions.merge(),
-        )
-
-        batch.commit().await()
-        house
+            freshHouse
+        }.await()
     }
 
     suspend fun updatePreference(
@@ -257,38 +266,61 @@ class HouseRepository(
         newAdminUid: String? = null,
     ): Result<Unit> = runCatching {
         val houseDoc = housesCollection.document(houseId)
-        val pendingAssigned = houseDoc.collection(SUBCOLLECTION_ASSIGNMENTS)
+        val houseSnap = houseDoc.get().await()
+        val currentWeek = houseSnap.getString("semanaAtual")
+            ?.takeIf { it.isNotBlank() }
+            ?: DateCycleUtils.currentIsoWeekKey()
+
+        val candidateAssignments = houseDoc.collection(SUBCOLLECTION_ASSIGNMENTS)
             .whereEqualTo("responsavelUid", memberUid)
+            .whereEqualTo("semana", currentWeek)
             .get()
             .await()
 
-        val batch = firestore.batch()
-        if (!newAdminUid.isNullOrBlank()) {
-            batch.update(
-                houseDoc.collection(SUBCOLLECTION_MEMBERS).document(newAdminUid),
-                "papel",
-                HouseRole.ADMIN.name,
-            )
-        }
-        pendingAssigned.documents.forEach { doc ->
-            if (doc.getString("status") != AssignmentStatus.CONCLUIDA.name) {
-                batch.update(
-                    doc.reference,
-                    mapOf(
-                        "responsavelUid" to null,
-                        "responsavelNome" to null,
-                        "status" to AssignmentStatus.PENDENTE.name,
-                    ),
-                )
+        val membersCol = houseDoc.collection(SUBCOLLECTION_MEMBERS)
+        val newAdminRef = newAdminUid?.takeIf { it.isNotBlank() }?.let { membersCol.document(it) }
+        val removedMemberRef = membersCol.document(memberUid)
+        val userRef = usersCollection.document(memberUid)
+
+        firestore.runTransaction { transaction ->
+            // Reads-before-writes obrigatório no SDK do Firestore
+            val freshHouseSnap = transaction.get(houseDoc)
+            val effectiveWeek = freshHouseSnap.getString("semanaAtual")
+                ?.takeIf { it.isNotBlank() }
+                ?: currentWeek
+            check(effectiveWeek == currentWeek) {
+                "A semana da casa mudou durante a remoção ($effectiveWeek != $currentWeek)."
             }
-        }
-        batch.delete(houseDoc.collection(SUBCOLLECTION_MEMBERS).document(memberUid))
-        batch.set(
-            usersCollection.document(memberUid),
-            mapOf("currentHouseId" to null),
-            SetOptions.merge(),
-        )
-        batch.commit().await()
+
+            if (newAdminRef != null) {
+                val newAdminSnap = transaction.get(newAdminRef)
+                check(newAdminSnap.exists()) { "Novo administrador não encontrado na casa." }
+            }
+
+            val refreshedCandidates = candidateAssignments.documents.map { doc ->
+                transaction.get(doc.reference)
+            }
+
+            if (newAdminRef != null) {
+                transaction.update(newAdminRef, "papel", HouseRole.ADMIN.name)
+            }
+
+            val reopenFields = reopenedAssignmentUpdateMap()
+            refreshedCandidates.forEach { snap ->
+                val assignment = snap.toObject(Assignment::class.java)?.copy(id = snap.id) ?: return@forEach
+                if (shouldReopenAssignmentOnMemberRemoval(assignment, memberUid, effectiveWeek)) {
+                    transaction.update(snap.reference, reopenFields)
+                }
+            }
+
+            transaction.delete(removedMemberRef)
+            transaction.set(
+                userRef,
+                mapOf("currentHouseId" to null),
+                SetOptions.merge(),
+            )
+            Unit
+        }.await()
     }
 
     suspend fun leaveHouseAsMember(houseId: String, memberUid: String): Result<Unit> =
@@ -361,5 +393,32 @@ class HouseRepository(
 
         fun isValidInviteCode(raw: String): Boolean =
             INVITE_CODE_REGEX.matches(normalizeInviteCode(raw))
+
+        fun shouldReopenAssignmentOnMemberRemoval(
+            assignment: Assignment,
+            removedMemberUid: String,
+            currentWeekKey: String,
+        ): Boolean =
+            assignment.responsavelUid == removedMemberUid &&
+                assignment.semana == currentWeekKey &&
+                !assignment.isConcluida()
+
+        fun reopenAssignmentOnMemberRemoval(assignment: Assignment): Assignment =
+            assignment.copy(
+                responsavelUid = null,
+                responsavelNome = null,
+                status = AssignmentStatus.PENDENTE.name,
+                distribuidaAutomaticamente = false,
+            )
+
+        fun reopenedAssignmentUpdateMap(): Map<String, Any?> {
+            val reopened = reopenAssignmentOnMemberRemoval(Assignment())
+            return mapOf(
+                "responsavelUid" to reopened.responsavelUid,
+                "responsavelNome" to reopened.responsavelNome,
+                "status" to reopened.status,
+                "distribuidaAutomaticamente" to reopened.distribuidaAutomaticamente,
+            )
+        }
     }
 }
