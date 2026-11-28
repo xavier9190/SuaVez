@@ -178,51 +178,55 @@ class AssignmentRepository(
         completed: Boolean,
         monthKey: String = DateCycleUtils.currentMonthKey(),
     ): Result<Unit> = runCatching {
-        if (assignment.isConcluida() == completed) return@runCatching
-        val assigneeUid = assignment.responsavelUid
+        require(assignment.id.isNotBlank()) { "O identificador da tarefa não pode ser vazio." }
         val assignmentRef = assignmentsCol(houseId).document(assignment.id)
-        val batch = firestore.batch()
 
-        if (completed) {
-            batch.update(
-                assignmentRef,
-                mapOf(
-                    "status" to AssignmentStatus.CONCLUIDA.name,
-                    "concluidaEm" to FieldValue.serverTimestamp(),
-                ),
-            )
-            if (!assigneeUid.isNullOrBlank()) {
-                val memberRef = membersCol(houseId).document(assigneeUid)
-                batch.update(
-                    memberRef,
-                    FieldPath.of("pontosPorMes", monthKey),
-                    FieldValue.increment(assignment.peso.toLong()),
+        firestore.runTransaction { transaction ->
+            val snap = transaction.get(assignmentRef)
+            val remote = snap.toObject(Assignment::class.java)?.copy(id = snap.id)
+                ?: return@runTransaction
+            if (remote.isConcluida() == completed) return@runTransaction
+
+            val assigneeUid = remote.responsavelUid
+            val pointsDelta = remote.peso.toLong()
+
+            val (targetMonthKey, signedDelta) = if (completed) {
+                transaction.update(
+                    assignmentRef,
+                    mapOf(
+                        "status" to AssignmentStatus.CONCLUIDA.name,
+                        "concluidaEm" to FieldValue.serverTimestamp(),
+                    ),
                 )
-            }
-        } else {
-            val revertedStatus = if (assigneeUid.isNullOrBlank()) {
-                AssignmentStatus.PENDENTE.name
+                monthKey to pointsDelta
             } else {
-                AssignmentStatus.ATRIBUIDA.name
+                val originMonthKey = DateCycleUtils.monthKeyFrom(
+                    timestamp = remote.concluidaEm,
+                    fallbackMonthKey = monthKey,
+                )
+                val revertedStatus = if (assigneeUid.isNullOrBlank()) {
+                    AssignmentStatus.PENDENTE.name
+                } else {
+                    AssignmentStatus.ATRIBUIDA.name
+                }
+                transaction.update(
+                    assignmentRef,
+                    mapOf(
+                        "status" to revertedStatus,
+                        "concluidaEm" to null,
+                    ),
+                )
+                originMonthKey to -pointsDelta
             }
-            batch.update(
-                assignmentRef,
-                mapOf(
-                    "status" to revertedStatus,
-                    "concluidaEm" to null,
-                ),
-            )
+
             if (!assigneeUid.isNullOrBlank()) {
-                val memberRef = membersCol(houseId).document(assigneeUid)
-                batch.update(
-                    memberRef,
-                    FieldPath.of("pontosPorMes", monthKey),
-                    FieldValue.increment(-assignment.peso.toLong()),
+                transaction.update(
+                    membersCol(houseId).document(assigneeUid),
+                    FieldPath.of("pontosPorMes", targetMonthKey),
+                    FieldValue.increment(signedDelta),
                 )
             }
-        }
-
-        batch.commit().await()
+        }.await()
     }
 
     suspend fun distributePendingTasks(

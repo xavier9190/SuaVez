@@ -1,5 +1,6 @@
 package xavier.pedro.suavez
 
+import com.google.firebase.Timestamp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -32,6 +33,7 @@ import xavier.pedro.suavez.ui.state.TaskDeadline
 import xavier.pedro.suavez.ui.state.TaskFrequency
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.util.Date
 import java.util.TimeZone
 
 class RepositoryAndMappersTest {
@@ -308,6 +310,23 @@ class RepositoryAndMappersTest {
         assertEquals(46, DateCycleUtils.parseWeekNumber("2026-W46"))
         assertEquals(1, DateCycleUtils.parseWeekNumber("2026", fallbackWeek = 1))
         assertEquals(1, DateCycleUtils.parseWeekNumber(null, fallbackWeek = 1))
+    }
+
+    @Test
+    fun monthKeyFromExtractsMonthAcrossBoundariesAndFallsBackWhenNull() {
+        val zoneId = ZoneId.of("America/Recife")
+        val timeZone = TimeZone.getTimeZone(zoneId)
+
+        val endOfOctober = Date.from(ZonedDateTime.of(2026, 10, 31, 23, 59, 59, 0, zoneId).toInstant())
+        val startOfNovember = Date.from(ZonedDateTime.of(2026, 11, 1, 0, 0, 1, 0, zoneId).toInstant())
+        val endOfYear = Date.from(ZonedDateTime.of(2026, 12, 31, 23, 59, 59, 0, zoneId).toInstant())
+        val startOfNewYear = Date.from(ZonedDateTime.of(2027, 1, 1, 0, 0, 1, 0, zoneId).toInstant())
+
+        assertEquals("2026-10", DateCycleUtils.monthKeyFrom(endOfOctober, timeZone))
+        assertEquals("2026-11", DateCycleUtils.monthKeyFrom(startOfNovember, timeZone))
+        assertEquals("2026-12", DateCycleUtils.monthKeyFrom(Timestamp(endOfYear), fallbackMonthKey = "2027-01", timeZone = timeZone))
+        assertEquals("2027-01", DateCycleUtils.monthKeyFrom(Timestamp(startOfNewYear), fallbackMonthKey = "2026-12", timeZone = timeZone))
+        assertEquals("2026-11", DateCycleUtils.monthKeyFrom(null as Timestamp?, fallbackMonthKey = "2026-11", timeZone = timeZone))
     }
 
     @Test
