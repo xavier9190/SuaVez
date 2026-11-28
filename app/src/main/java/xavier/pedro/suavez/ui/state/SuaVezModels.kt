@@ -2,7 +2,9 @@ package xavier.pedro.suavez.ui.state
 
 import xavier.pedro.suavez.data.model.HouseRole
 import xavier.pedro.suavez.data.model.PreferenceLevel
+import xavier.pedro.suavez.data.model.Task
 import xavier.pedro.suavez.data.model.TaskWeightLevel
+import xavier.pedro.suavez.data.repository.DateCycleUtils
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -78,7 +80,13 @@ data class UiRecurringTask(
     val titulo: String,
     val categoria: TaskCategory,
     val pontos: Int,
-    val frequencia: TaskFrequency,
+    val frequencia: TaskFrequency = TaskFrequency.SEMANAL,
+    val diasSemana: List<Int> = emptyList(),
+    val horario: String? = null,
+    val intervaloValor: Int = 1,
+    val intervaloUnidade: String = Task.INTERVAL_UNIT_WEEKS,
+    val diaDoMes: Int? = null,
+    val semanaReferencia: String = "",
     val iconHint: TaskIconHint = defaultIconFor(categoria, titulo),
 ) {
     val effortLevel: TaskWeightLevel
@@ -92,6 +100,9 @@ data class UiAssignment(
     val categoria: TaskCategory,
     val pontos: Int,
     val deadline: TaskDeadline?,
+    val dataAgendada: String? = null,
+    val horario: String? = null,
+    val semana: String? = null,
     val subtitleOverride: String? = null,
     val assigneeUid: String?,
     val isDone: Boolean = false,
@@ -102,7 +113,12 @@ data class UiAssignment(
         get() = TaskWeightLevel.fromPoints(pontos)
 
     fun metaLabel(): String {
-        val detail = subtitleOverride ?: deadline?.metaText ?: "sem prazo"
+        val detail = subtitleOverride ?: DateCycleUtils.formatScheduleMeta(
+            dataAgendada = dataAgendada,
+            horario = horario,
+            deadline = deadline,
+            useWeekdayLabel = recurringTaskId != null,
+        )
         return "${categoria.label} · $detail"
     }
 }
@@ -138,9 +154,15 @@ fun avatarIndexFor(id: String): Int {
     return abs(id.hashCode()) % 4
 }
 
-fun calculateWeeklyQuota(recurringTasks: List<UiRecurringTask>, memberCount: Int): Int {
+fun calculateWeeklyQuota(
+    recurringTasks: List<UiRecurringTask>,
+    memberCount: Int,
+    targetWeekKey: String? = null,
+): Int {
     if (memberCount <= 0) return 0
-    val total = recurringTasks.sumOf { it.pontos }
+    val total = recurringTasks.sumOf { task ->
+        task.pontos * DateCycleUtils.countOccurrencesInWeek(task, targetWeekKey)
+    }
     return (total.toDouble() / memberCount).roundToInt()
 }
 

@@ -13,6 +13,12 @@ data class Task(
     val peso: Int = TaskWeightLevel.MEDIUM.points,
     val pesoNivel: String = TaskWeightLevel.MEDIUM.name,
     val frequencia: String = "SEMANAL",
+    val diasSemana: List<Int> = emptyList(),
+    val horario: String? = null,
+    val intervaloValor: Int = 1,
+    val intervaloUnidade: String = INTERVAL_UNIT_WEEKS,
+    val diaDoMes: Int? = null,
+    val semanaReferencia: String = "",
     val categoriaId: String = "",
     val categoriaNome: String = "",
     val ativa: Boolean = true,
@@ -22,4 +28,9 @@ data class Task(
 ) {
     @Exclude
     fun getWeightLevel(): TaskWeightLevel = TaskWeightLevel.fromString(pesoNivel)
+
+    companion object {
+        const val INTERVAL_UNIT_WEEKS = "SEMANAS"
+        const val INTERVAL_UNIT_MONTHS = "MESES"
+    }
 }

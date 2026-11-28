@@ -13,6 +13,7 @@ data class SuaVezUiState(
     val activeTab: MainTab = MainTab.TASKS,
     val currentUser: UiUser? = null,
     val currentHouse: UiHouse? = null,
+    val currentWeekKey: String? = null,
     val members: List<UiMember> = emptyList(),
     val recurringTasks: List<UiRecurringTask> = emptyList(),
     val assignments: List<UiAssignment> = emptyList(),
@@ -41,7 +42,7 @@ data class SuaVezUiState(
         get() = assignments.filter { (it.assigneeUid == null || it.justClaimedInSession) && !it.isDone }
 
     val weeklyQuotaPerMember: Int
-        get() = calculateWeeklyQuota(recurringTasks, members.size.coerceAtLeast(1))
+        get() = calculateWeeklyQuota(recurringTasks, members.size.coerceAtLeast(1), currentWeekKey)
 
     val myDonePoints: Int
         get() = myAssignments.filter { it.isDone }.sumOf { it.pontos }

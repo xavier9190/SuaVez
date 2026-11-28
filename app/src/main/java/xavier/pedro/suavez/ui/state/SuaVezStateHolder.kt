@@ -14,6 +14,7 @@ import xavier.pedro.suavez.data.model.Assignment
 import xavier.pedro.suavez.data.model.House
 import xavier.pedro.suavez.data.model.Member
 import xavier.pedro.suavez.data.model.PreferenceLevel
+import xavier.pedro.suavez.data.model.Task
 import xavier.pedro.suavez.data.repository.AuthSession
 import xavier.pedro.suavez.data.repository.DateCycleUtils
 import xavier.pedro.suavez.data.repository.SuaVezDataSource
@@ -263,6 +264,7 @@ class SuaVezStateHolder(
         _uiState.update { current ->
             current.copy(
                 currentHouse = house.toUiHouse(),
+                currentWeekKey = initialWeek,
                 members = if (initialMembers.isNotEmpty()) {
                     initialMembers.map { it.toUiMember() }
                 } else {
@@ -332,6 +334,7 @@ class SuaVezStateHolder(
     }
 
     private fun restartWeekAssignmentsObserver(houseId: String, weekKey: String) {
+        _uiState.update { it.copy(currentWeekKey = weekKey) }
         weekAssignmentsJob?.cancel()
         weekAssignmentsJob = scope.launch {
             dataSource.observeWeekAssignments(houseId, weekKey)
@@ -422,7 +425,9 @@ class SuaVezStateHolder(
         title: String,
         category: TaskCategory,
         points: Int,
-        deadline: TaskDeadline,
+        deadline: TaskDeadline = TaskDeadline.SEM_PRAZO,
+        dataAgendada: String? = null,
+        horario: String? = null,
     ) {
         val snapshot = state
         val houseId = snapshot.currentHouse?.id ?: return
@@ -436,6 +441,8 @@ class SuaVezStateHolder(
                 deadline = deadline,
                 createdByUid = uid,
                 semana = currentWeekKey,
+                dataAgendada = dataAgendada,
+                horario = horario,
             ).onSuccess { created ->
                 showMessage("Tarefa \"${created.titulo}\" adicionada")
             }.onFailure { showError("Erro ao adicionar tarefa", it) }
@@ -447,7 +454,9 @@ class SuaVezStateHolder(
         title: String,
         category: TaskCategory,
         points: Int,
-        deadline: TaskDeadline,
+        deadline: TaskDeadline = TaskDeadline.SEM_PRAZO,
+        dataAgendada: String? = null,
+        horario: String? = null,
     ) {
         if (!state.isAdmin) return
         val houseId = state.currentHouse?.id ?: return
@@ -459,6 +468,8 @@ class SuaVezStateHolder(
                 category = category,
                 points = points,
                 deadline = deadline,
+                dataAgendada = dataAgendada,
+                horario = horario,
             ).onSuccess {
                 showMessage("Alterações salvas")
             }.onFailure { showError("Erro ao atualizar atividade", it) }
@@ -471,6 +482,27 @@ class SuaVezStateHolder(
         scope.launch {
             dataSource.deleteAssignment(houseId, assignmentId)
                 .onSuccess { showMessage("Atividade excluída") }
+                .onFailure { showError("Erro ao excluir atividade", it) }
+        }
+    }
+
+    fun deleteRecurringAssignmentAndFuture(assignmentId: String) {
+        if (!state.isAdmin) return
+        val houseId = state.currentHouse?.id ?: return
+        val target = rawAssignments.firstOrNull { it.id == assignmentId } ?: return
+        val recurringTaskId = target.taskId
+        if (recurringTaskId.isNullOrBlank()) {
+            deleteWeeklyAssignment(assignmentId)
+            return
+        }
+        scope.launch {
+            dataSource.deleteRecurringAssignmentAndFuture(
+                houseId = houseId,
+                assignmentId = assignmentId,
+                recurringTaskId = recurringTaskId,
+                fromWeekKey = target.semana.ifBlank { currentWeekKey },
+                fromDateKey = target.dataAgendada,
+            ).onSuccess { showMessage("Atividade e recorrência excluídas") }
                 .onFailure { showError("Erro ao excluir atividade", it) }
         }
     }
@@ -517,9 +549,13 @@ class SuaVezStateHolder(
         title: String,
         category: TaskCategory,
         points: Int,
-        frequency: TaskFrequency,
-        openInCurrentWeek: Boolean = false,
-        deadline: TaskDeadline? = null,
+        frequency: TaskFrequency = TaskFrequency.SEMANAL,
+        diasSemana: List<Int> = emptyList(),
+        horario: String? = null,
+        intervaloValor: Int = 1,
+        intervaloUnidade: String = Task.INTERVAL_UNIT_WEEKS,
+        diaDoMes: Int? = null,
+        semanaReferencia: String = currentWeekKey,
     ) {
         val snapshot = state
         if (!snapshot.isAdmin) return
@@ -534,15 +570,19 @@ class SuaVezStateHolder(
                 category = category,
                 points = points,
                 frequency = frequency,
+                diasSemana = diasSemana,
+                horario = horario,
+                intervaloValor = intervaloValor,
+                intervaloUnidade = intervaloUnidade,
+                diaDoMes = diaDoMes,
+                semanaReferencia = semanaReferencia,
                 createdByUid = uid,
                 semanaAtual = currentWeekKey,
-                createInitialAssignmentInCurrentWeek = editingId == null && openInCurrentWeek,
-                initialDeadline = deadline,
             ).onSuccess {
-                when {
-                    editingId != null -> showMessage("Alterações salvas")
-                    openInCurrentWeek -> showMessage("Atividade recorrente \"$cleanTitle\" criada e aberta na semana")
-                    else -> showMessage("Atividade recorrente \"$cleanTitle\" criada")
+                if (editingId != null) {
+                    showMessage("Alterações salvas")
+                } else {
+                    showMessage("Atividade recorrente \"$cleanTitle\" criada")
                 }
             }.onFailure { showError("Erro ao salvar atividade recorrente", it) }
         }

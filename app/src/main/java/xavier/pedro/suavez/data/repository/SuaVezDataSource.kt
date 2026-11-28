@@ -46,11 +46,15 @@ interface SuaVezDataSource {
         title: String,
         category: TaskCategory,
         points: Int,
-        frequency: TaskFrequency,
+        frequency: TaskFrequency = TaskFrequency.SEMANAL,
+        diasSemana: List<Int> = emptyList(),
+        horario: String? = null,
+        intervaloValor: Int = 1,
+        intervaloUnidade: String = Task.INTERVAL_UNIT_WEEKS,
+        diaDoMes: Int? = null,
+        semanaReferencia: String = DateCycleUtils.currentIsoWeekKey(),
         createdByUid: String,
         semanaAtual: String,
-        createInitialAssignmentInCurrentWeek: Boolean,
-        initialDeadline: TaskDeadline?,
     ): Result<Task>
 
     suspend fun deleteRecurringTask(
@@ -66,9 +70,11 @@ interface SuaVezDataSource {
         title: String,
         category: TaskCategory,
         points: Int,
-        deadline: TaskDeadline,
+        deadline: TaskDeadline = TaskDeadline.SEM_PRAZO,
         createdByUid: String,
         semana: String,
+        dataAgendada: String? = null,
+        horario: String? = null,
     ): Result<Assignment>
 
     suspend fun updateWeeklyAssignment(
@@ -77,12 +83,22 @@ interface SuaVezDataSource {
         title: String,
         category: TaskCategory,
         points: Int,
-        deadline: TaskDeadline,
+        deadline: TaskDeadline = TaskDeadline.SEM_PRAZO,
+        dataAgendada: String? = null,
+        horario: String? = null,
     ): Result<Unit>
 
     suspend fun deleteAssignment(
         houseId: String,
         assignmentId: String,
+    ): Result<Unit>
+
+    suspend fun deleteRecurringAssignmentAndFuture(
+        houseId: String,
+        assignmentId: String,
+        recurringTaskId: String,
+        fromWeekKey: String,
+        fromDateKey: String? = null,
     ): Result<Unit>
 
     suspend fun claimOpenTask(
@@ -192,10 +208,14 @@ class FirestoreSuaVezDataSource(
         category: TaskCategory,
         points: Int,
         frequency: TaskFrequency,
+        diasSemana: List<Int>,
+        horario: String?,
+        intervaloValor: Int,
+        intervaloUnidade: String,
+        diaDoMes: Int?,
+        semanaReferencia: String,
         createdByUid: String,
         semanaAtual: String,
-        createInitialAssignmentInCurrentWeek: Boolean,
-        initialDeadline: TaskDeadline?,
     ): Result<Task> = taskRepository.saveRecurringTask(
         houseId = houseId,
         editingId = editingId,
@@ -203,10 +223,14 @@ class FirestoreSuaVezDataSource(
         category = category,
         points = points,
         frequency = frequency,
+        diasSemana = diasSemana,
+        horario = horario,
+        intervaloValor = intervaloValor,
+        intervaloUnidade = intervaloUnidade,
+        diaDoMes = diaDoMes,
+        semanaReferencia = semanaReferencia,
         createdByUid = createdByUid,
         semanaAtual = semanaAtual,
-        createInitialAssignmentInCurrentWeek = createInitialAssignmentInCurrentWeek,
-        initialDeadline = initialDeadline,
     )
 
     override suspend fun deleteRecurringTask(
@@ -231,6 +255,8 @@ class FirestoreSuaVezDataSource(
         deadline: TaskDeadline,
         createdByUid: String,
         semana: String,
+        dataAgendada: String?,
+        horario: String?,
     ): Result<Assignment> = assignmentRepository.addWeeklyTask(
         houseId = houseId,
         title = title,
@@ -239,6 +265,8 @@ class FirestoreSuaVezDataSource(
         deadline = deadline,
         createdByUid = createdByUid,
         semana = semana,
+        dataAgendada = dataAgendada,
+        horario = horario,
     )
 
     override suspend fun updateWeeklyAssignment(
@@ -248,6 +276,8 @@ class FirestoreSuaVezDataSource(
         category: TaskCategory,
         points: Int,
         deadline: TaskDeadline,
+        dataAgendada: String?,
+        horario: String?,
     ): Result<Unit> = assignmentRepository.updateWeeklyAssignment(
         houseId = houseId,
         assignmentId = assignmentId,
@@ -255,6 +285,8 @@ class FirestoreSuaVezDataSource(
         category = category,
         points = points,
         deadline = deadline,
+        dataAgendada = dataAgendada,
+        horario = horario,
     )
 
     override suspend fun deleteAssignment(
@@ -263,6 +295,20 @@ class FirestoreSuaVezDataSource(
     ): Result<Unit> = assignmentRepository.deleteAssignment(
         houseId = houseId,
         assignmentId = assignmentId,
+    )
+
+    override suspend fun deleteRecurringAssignmentAndFuture(
+        houseId: String,
+        assignmentId: String,
+        recurringTaskId: String,
+        fromWeekKey: String,
+        fromDateKey: String?,
+    ): Result<Unit> = assignmentRepository.deleteRecurringAssignmentAndFuture(
+        houseId = houseId,
+        assignmentId = assignmentId,
+        recurringTaskId = recurringTaskId,
+        fromWeekKey = fromWeekKey,
+        fromDateKey = fromDateKey,
     )
 
     override suspend fun claimOpenTask(

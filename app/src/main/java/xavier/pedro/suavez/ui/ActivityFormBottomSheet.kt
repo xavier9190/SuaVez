@@ -323,8 +323,6 @@ class ActivityFormBottomSheet : BottomSheetDialogFragment() {
                             category = submission.category,
                             points = submission.points,
                             frequency = submission.frequency,
-                            openInCurrentWeek = submission.openInCurrentWeek,
-                            deadline = submission.deadline,
                         )
                     }
                 }

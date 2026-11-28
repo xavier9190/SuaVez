@@ -29,6 +29,16 @@ object DateCycleUtils {
 
     private const val REMINDER_HOUR = 9
     private val ISO_WEEK_KEY_REGEX = Regex("^(\\d{4})-W(\\d{1,2})$", RegexOption.IGNORE_CASE)
+    private val DATE_KEY_REGEX = Regex("^(\\d{4})-(\\d{2})-(\\d{2})$")
+    private val WEEKDAY_SHORT_PT = mapOf(
+        Calendar.SUNDAY to "Dom",
+        Calendar.MONDAY to "Seg",
+        Calendar.TUESDAY to "Ter",
+        Calendar.WEDNESDAY to "Qua",
+        Calendar.THURSDAY to "Qui",
+        Calendar.FRIDAY to "Sex",
+        Calendar.SATURDAY to "Sáb",
+    )
 
     fun currentIsoWeekKey(calendar: Calendar = Calendar.getInstance()): String {
         val isoCal = (calendar.clone() as Calendar).apply {
@@ -74,6 +84,166 @@ object DateCycleUtils {
         return match?.groupValues?.getOrNull(1)?.toIntOrNull()
             ?: semanaKey.trim().toIntOrNull()?.takeIf { it in 1..53 }
             ?: fallbackWeek
+    }
+
+    private fun parseCalendarDate(dateKey: String?): GregorianCalendar? {
+        val raw = dateKey?.trim() ?: return null
+        val match = DATE_KEY_REGEX.matchEntire(raw) ?: return null
+        val year = match.groupValues[1].toIntOrNull() ?: return null
+        val month = match.groupValues[2].toIntOrNull() ?: return null
+        val day = match.groupValues[3].toIntOrNull() ?: return null
+        if (month !in 1..12 || day !in 1..31) return null
+        return GregorianCalendar(TimeZone.getTimeZone("UTC"), Locale.US).apply {
+            isLenient = false
+            clear()
+            set(year, month - 1, day, 12, 0, 0)
+            runCatching { timeInMillis }.getOrElse { return null }
+        }
+    }
+
+    private fun formatDateKey(cal: Calendar): String = String.format(
+        Locale.US,
+        "%04d-%02d-%02d",
+        cal.get(Calendar.YEAR),
+        cal.get(Calendar.MONTH) + 1,
+        cal.get(Calendar.DAY_OF_MONTH),
+    )
+
+    private fun mondayOfIsoWeek(weekKey: String?): GregorianCalendar? {
+        val raw = weekKey?.trim() ?: return null
+        val match = ISO_WEEK_KEY_REGEX.matchEntire(raw) ?: return null
+        val isoYear = match.groupValues[1].toIntOrNull() ?: return null
+        val isoWeek = match.groupValues[2].toIntOrNull()?.takeIf { it in 1..53 } ?: return null
+        val cal = GregorianCalendar(TimeZone.getTimeZone("UTC"), Locale.US).apply {
+            firstDayOfWeek = Calendar.MONDAY
+            minimalDaysInFirstWeek = 4
+            clear()
+            setWeekDate(isoYear, isoWeek, Calendar.MONDAY)
+            set(Calendar.HOUR_OF_DAY, 12)
+        }
+        if (cal.weekYear != isoYear || cal.get(Calendar.WEEK_OF_YEAR) != isoWeek) return null
+        return cal
+    }
+
+    fun isoWeekKeyForDate(dateKey: String): String? {
+        val cal = parseCalendarDate(dateKey) ?: return null
+        return currentIsoWeekKey(cal)
+    }
+
+    fun datesOfIsoWeek(weekKey: String): List<String> {
+        val monday = mondayOfIsoWeek(weekKey) ?: return emptyList()
+        return (0..6).map { offset ->
+            val day = (monday.clone() as GregorianCalendar).apply { add(Calendar.DAY_OF_MONTH, offset) }
+            formatDateKey(day)
+        }
+    }
+
+    fun dayOfWeekForDate(dateKey: String): Int? =
+        parseCalendarDate(dateKey)?.get(Calendar.DAY_OF_WEEK)
+
+    fun isoWeeksBetween(startWeekOrDateKey: String, endWeekKey: String): Int? {
+        val startWeek = if (DATE_KEY_REGEX.matches(startWeekOrDateKey.trim())) {
+            isoWeekKeyForDate(startWeekOrDateKey) ?: return null
+        } else {
+            startWeekOrDateKey
+        }
+        val startCal = mondayOfIsoWeek(startWeek) ?: return null
+        val endCal = mondayOfIsoWeek(endWeekKey) ?: return null
+        val diffDays = ((endCal.timeInMillis - startCal.timeInMillis) / 86_400_000L).toInt()
+        return diffDays / 7
+    }
+
+    fun buildDeterministicAssignmentId(weekKey: String, taskId: String, dateKey: String): String =
+        "${weekKey}_task_${taskId}_${dateKey}"
+
+    fun calculateOccurrencesInWeek(task: Task, targetWeekKey: String): List<String> {
+        if (!task.ativa) return emptyList()
+        val weekDates = datesOfIsoWeek(targetWeekKey)
+        if (weekDates.isEmpty()) return emptyList()
+
+        val interval = task.intervaloValor.coerceAtLeast(1)
+        val unit = task.intervaloUnidade.uppercase(Locale.ROOT)
+        val isMonthlyMode = unit == Task.INTERVAL_UNIT_MONTHS || (task.diaDoMes != null && task.diasSemana.isEmpty())
+
+        if (isMonthlyMode) {
+            val targetDay = (task.diaDoMes ?: 1).coerceIn(1, 31)
+            val refCal = if (task.semanaReferencia.isNotBlank()) {
+                parseCalendarDate(task.semanaReferencia) ?: mondayOfIsoWeek(task.semanaReferencia)
+            } else {
+                null
+            }
+            return weekDates.filter { dateKey ->
+                val cal = parseCalendarDate(dateKey) ?: return@filter false
+                val maxDayInMonth = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+                val effectiveDay = minOf(targetDay, maxDayInMonth)
+                if (cal.get(Calendar.DAY_OF_MONTH) != effectiveDay) return@filter false
+                if (interval > 1 && refCal != null) {
+                    val diffMonths = (cal.get(Calendar.YEAR) - refCal.get(Calendar.YEAR)) * 12 +
+                        (cal.get(Calendar.MONTH) - refCal.get(Calendar.MONTH))
+                    diffMonths >= 0 && diffMonths % interval == 0
+                } else {
+                    true
+                }
+            }
+        }
+
+        val freq = task.frequencia.toTaskFrequency()
+        val effectiveInterval = if (interval == 1 && task.diasSemana.isEmpty() && freq == TaskFrequency.QUINZENAL) {
+            2
+        } else {
+            interval
+        }
+        if (effectiveInterval > 1 && task.semanaReferencia.isNotBlank()) {
+            val diffWeeks = isoWeeksBetween(task.semanaReferencia, targetWeekKey)
+            if (diffWeeks != null && (diffWeeks < 0 || diffWeeks % effectiveInterval != 0)) {
+                return emptyList()
+            }
+        }
+
+        val activeDays = task.diasSemana.filter { it in Calendar.SUNDAY..Calendar.SATURDAY }.toSet()
+            .ifEmpty { setOf(Calendar.SUNDAY) }
+
+        return weekDates.filter { dateKey ->
+            val dow = dayOfWeekForDate(dateKey)
+            dow != null && dow in activeDays
+        }
+    }
+
+    fun countOccurrencesInWeek(task: UiRecurringTask, targetWeekKey: String? = null): Int {
+        if (!targetWeekKey.isNullOrBlank()) {
+            return calculateOccurrencesInWeek(task.toFirestoreTask(), targetWeekKey).size
+        }
+        if (task.diasSemana.isNotEmpty()) {
+            return task.diasSemana.filter { it in Calendar.SUNDAY..Calendar.SATURDAY }.distinct().size.coerceAtLeast(1)
+        }
+        return 1
+    }
+
+    fun formatScheduleMeta(
+        dataAgendada: String?,
+        horario: String?,
+        deadline: TaskDeadline?,
+        useWeekdayLabel: Boolean = false,
+    ): String {
+        val cleanTime = horario?.trim()?.takeIf { it.isNotEmpty() }
+        if (!dataAgendada.isNullOrBlank()) {
+            val cal = parseCalendarDate(dataAgendada)
+            if (cal != null) {
+                if (useWeekdayLabel) {
+                    val dayShort = WEEKDAY_SHORT_PT[cal.get(Calendar.DAY_OF_WEEK)] ?: dataAgendada
+                    return if (cleanTime != null) "$dayShort, $cleanTime" else dayShort
+                }
+                val dateShort = String.format(
+                    Locale.US,
+                    "%02d/%02d",
+                    cal.get(Calendar.DAY_OF_MONTH),
+                    cal.get(Calendar.MONTH) + 1,
+                )
+                return if (cleanTime != null) "$dateShort · $cleanTime" else dateShort
+            }
+        }
+        if (cleanTime != null) return cleanTime
+        return deadline?.metaText ?: "sem prazo"
     }
 
     /**
@@ -234,6 +404,12 @@ fun Task.toUiRecurringTask(): UiRecurringTask {
         categoria = category,
         pontos = peso,
         frequencia = frequency,
+        diasSemana = diasSemana,
+        horario = horario,
+        intervaloValor = intervaloValor.coerceAtLeast(1),
+        intervaloUnidade = intervaloUnidade.ifBlank { Task.INTERVAL_UNIT_WEEKS },
+        diaDoMes = diaDoMes,
+        semanaReferencia = semanaReferencia,
         iconHint = defaultIconFor(category, titulo),
     )
 }
@@ -251,6 +427,12 @@ fun UiRecurringTask.toFirestoreTask(
         peso = pontos,
         pesoNivel = weightLevel.name,
         frequencia = frequencia.name,
+        diasSemana = diasSemana,
+        horario = horario,
+        intervaloValor = intervaloValor.coerceAtLeast(1),
+        intervaloUnidade = intervaloUnidade.ifBlank { Task.INTERVAL_UNIT_WEEKS },
+        diaDoMes = diaDoMes,
+        semanaReferencia = semanaReferencia,
         categoriaId = categoria.name.lowercase(Locale.ROOT),
         categoriaNome = categoria.label,
         ativa = ativa,
@@ -261,7 +443,7 @@ fun UiRecurringTask.toFirestoreTask(
 fun Assignment.toUiAssignment(justClaimedInSession: Boolean = false): UiAssignment {
     val category = categoriaNome.ifBlank { categoriaId }.toTaskCategory()
     val parsedDeadline = deadline.toTaskDeadline()
-        ?: if (urgente || ehRollover) TaskDeadline.HOJE else null
+        ?: if (dataAgendada == null && (urgente || ehRollover)) TaskDeadline.HOJE else null
     val done = isConcluida()
     val subtitle = when {
         descricao.isNotBlank() -> descricao
@@ -275,6 +457,9 @@ fun Assignment.toUiAssignment(justClaimedInSession: Boolean = false): UiAssignme
         categoria = category,
         pontos = peso,
         deadline = parsedDeadline,
+        dataAgendada = dataAgendada,
+        horario = horario,
+        semana = semana.ifBlank { null },
         subtitleOverride = subtitle,
         assigneeUid = responsavelUid,
         isDone = done,
@@ -299,12 +484,14 @@ fun UiAssignment.toFirestoreAssignment(
     }
     return Assignment(
         id = id,
-        semana = semana,
+        semana = this.semana ?: semana,
         taskId = recurringTaskId,
         titulo = titulo,
         descricao = subtitleOverride.orEmpty(),
         peso = pontos,
         deadline = deadline?.name,
+        dataAgendada = dataAgendada,
+        horario = horario,
         categoriaId = categoria.name.lowercase(Locale.ROOT),
         categoriaNome = categoria.label,
         status = statusEnum.name,
