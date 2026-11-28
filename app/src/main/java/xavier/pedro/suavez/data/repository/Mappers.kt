@@ -1,5 +1,6 @@
 package xavier.pedro.suavez.data.repository
 
+import com.google.firebase.Timestamp
 import xavier.pedro.suavez.data.model.Assignment
 import xavier.pedro.suavez.data.model.AssignmentStatus
 import xavier.pedro.suavez.data.model.Category
@@ -19,6 +20,7 @@ import xavier.pedro.suavez.ui.state.UiMember
 import xavier.pedro.suavez.ui.state.UiUser
 import xavier.pedro.suavez.ui.state.defaultIconFor
 import java.util.Calendar
+import java.util.Date
 import java.util.GregorianCalendar
 import java.util.Locale
 import java.util.TimeZone
@@ -49,6 +51,22 @@ object DateCycleUtils {
         val month = calendar.get(Calendar.MONTH) + 1
         return String.format(Locale.US, "%04d-%02d", year, month)
     }
+
+    fun monthKeyFrom(
+        date: Date,
+        timeZone: TimeZone = TimeZone.getDefault(),
+    ): String {
+        val calendar = Calendar.getInstance(timeZone).apply {
+            time = date
+        }
+        return currentMonthKey(calendar)
+    }
+
+    fun monthKeyFrom(
+        timestamp: Timestamp?,
+        fallbackMonthKey: String = currentMonthKey(),
+        timeZone: TimeZone = TimeZone.getDefault(),
+    ): String = timestamp?.let { monthKeyFrom(it.toDate(), timeZone) } ?: fallbackMonthKey
 
     fun parseWeekNumber(semanaKey: String?, fallbackWeek: Int = 1): Int {
         if (semanaKey.isNullOrBlank()) return fallbackWeek
