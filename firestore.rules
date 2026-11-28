@@ -1,0 +1,208 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function housePath(houseId) {
+      return /databases/$(database)/documents/houses/$(houseId);
+    }
+
+    function memberPath(houseId, uid) {
+      return /databases/$(database)/documents/houses/$(houseId)/members/$(uid);
+    }
+
+    function isHouseMember(houseId) {
+      return isSignedIn() && exists(memberPath(houseId, request.auth.uid));
+    }
+
+    function isHouseAdmin(houseId) {
+      return isHouseMember(houseId)
+        && get(memberPath(houseId, request.auth.uid)).data.papel == 'ADMIN';
+    }
+
+    // Permite que o batch de createHouse semeie o criador como ADMIN e as categorias padrão antes da casa existir.
+    function isHouseCreatorInBatch(houseId) {
+      return isSignedIn()
+        && !exists(housePath(houseId))
+        && getAfter(housePath(houseId)).data.criadaPorUid == request.auth.uid;
+    }
+
+    function isValidWeekKey(value) {
+      return value is string && value.matches('^\\d{4}-W\\d{2}$');
+    }
+
+    function isRolloverTransition(houseId) {
+      return getAfter(housePath(houseId)).data.semanaAtual != get(housePath(houseId)).data.semanaAtual
+        && isValidWeekKey(getAfter(housePath(houseId)).data.semanaAtual);
+    }
+
+    // 1. Coleção Raiz: users/{uid}
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid);
+      // Além do próprio usuário, ADMIN pode apenas limpar currentHouseId para null ao remover morador ou encerrar a casa.
+      allow update: if isOwner(uid)
+        || (
+          isSignedIn()
+          && resource.data.currentHouseId != null
+          && isHouseAdmin(resource.data.currentHouseId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentHouseId'])
+          && request.resource.data.currentHouseId == null
+        );
+      allow delete: if false;
+    }
+
+    // 2. Coleção Raiz: houses/{houseId}
+    match /houses/{houseId} {
+      // Leitura liberada para usuários autenticados para permitir consulta por codigoConvite e checagem de colisão.
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && request.resource.data.criadaPorUid == request.auth.uid;
+
+      // ADMIN atualiza metadados da casa; MEMBER atualiza EXCLUSIVAMENTE semanaAtual no rollover semanal.
+      allow update: if isHouseAdmin(houseId)
+        || (
+          isHouseMember(houseId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['semanaAtual'])
+          && request.resource.data.semanaAtual != resource.data.semanaAtual
+          && isValidWeekKey(request.resource.data.semanaAtual)
+        );
+
+      allow delete: if isHouseAdmin(houseId);
+
+      // 3. Subcoleção: houses/{houseId}/members/{uid}
+      match /members/{uid} {
+        allow read: if isHouseMember(houseId) || isOwner(uid);
+
+        // Impede auto-promoção para ADMIN na entrada por convite (exige papel == 'MEMBER', exceto criador inicial).
+        allow create: if isOwner(uid)
+          && request.resource.data.uid == uid
+          && (
+            request.resource.data.papel == 'MEMBER'
+            || (request.resource.data.papel == 'ADMIN' && isHouseCreatorInBatch(houseId))
+          );
+
+        // shortcut: Firestore rules cannot correlate pontosPorMes delta with arbitrary assignmentId; move scoring to Cloud Functions if untrusted clients need enforcement.
+        allow update: if isHouseAdmin(houseId)
+          || (
+            isOwner(uid)
+            && request.resource.data.papel == resource.data.papel
+            && request.resource.data.pontosPorMes is map
+            && request.resource.data.preferences is map
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['preferences', 'pontosPorMes', 'nome', 'fotoUrl'])
+          );
+
+        allow delete: if isHouseAdmin(houseId) || isOwner(uid);
+      }
+
+      // 4. Subcoleção: houses/{houseId}/categories/{categoryId}
+      match /categories/{categoryId} {
+        allow read: if isHouseMember(houseId);
+        allow create: if isHouseAdmin(houseId) || isHouseCreatorInBatch(houseId);
+        allow update, delete: if isHouseAdmin(houseId);
+      }
+
+      // 5. Subcoleção: houses/{houseId}/tasks/{taskId} (Catálogo Recorrente)
+      match /tasks/{taskId} {
+        allow read: if isHouseMember(houseId);
+        allow create, update: if isHouseAdmin(houseId)
+          && request.resource.data.peso in [2, 5, 8];
+        // Bloqueia delete físico para reforçar soft-delete (ativa = false), liberando apenas quando a casa é excluída.
+        allow delete: if isHouseAdmin(houseId) && !existsAfter(housePath(houseId));
+      }
+
+      // 6. Subcoleção: houses/{houseId}/assignments/{assignmentId}
+      match /assignments/{assignmentId} {
+        allow read: if isHouseMember(houseId);
+
+        allow create: if (
+            isHouseAdmin(houseId)
+            && request.resource.data.peso in [2, 5, 8]
+            && isValidWeekKey(request.resource.data.semana)
+          )
+          || (
+            isHouseMember(houseId)
+            && request.resource.data.peso in [2, 5, 8]
+            && isValidWeekKey(request.resource.data.semana)
+            && request.resource.data.status == 'PENDENTE'
+            && request.resource.data.responsavelUid == null
+            && request.resource.data.distribuidaAutomaticamente == false
+            && (
+              (
+                request.resource.data.ehAvulsa == true
+                && request.resource.data.ehRollover == false
+                && request.resource.data.criadaPorUid == request.auth.uid
+              )
+              || (
+                isRolloverTransition(houseId)
+                && request.resource.data.semana == getAfter(housePath(houseId)).data.semanaAtual
+                && (request.resource.data.ehRollover == true || request.resource.data.ehAvulsa == false)
+              )
+            )
+          );
+
+        allow update: if (
+            // Conclusão e estorno restritos exclusivamente ao próprio responsável pela tarefa.
+            isHouseMember(houseId)
+            && resource.data.responsavelUid == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'concluidaEm'])
+            && (
+              (resource.data.status == 'ATRIBUIDA' && request.resource.data.status == 'CONCLUIDA' && request.resource.data.concluidaEm != null)
+              || (resource.data.status == 'CONCLUIDA' && request.resource.data.status == 'ATRIBUIDA' && request.resource.data.concluidaEm == null)
+            )
+          )
+          || (
+            // Claim manual de tarefa aberta pelo próprio morador.
+            isHouseMember(houseId)
+            && resource.data.status == 'PENDENTE'
+            && resource.data.responsavelUid == null
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['status', 'responsavelUid', 'responsavelNome', 'distribuidaAutomaticamente'])
+            && request.resource.data.status == 'ATRIBUIDA'
+            && request.resource.data.responsavelUid == request.auth.uid
+            && request.resource.data.distribuidaAutomaticamente == false
+          )
+          || (
+            // Devolução para pendente (unclaim ou saída do morador) pelo próprio responsável.
+            isHouseMember(houseId)
+            && resource.data.status != 'CONCLUIDA'
+            && resource.data.responsavelUid == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['status', 'responsavelUid', 'responsavelNome', 'distribuidaAutomaticamente'])
+            && request.resource.data.status == 'PENDENTE'
+            && request.resource.data.responsavelUid == null
+            && request.resource.data.responsavelNome == null
+            && request.resource.data.distribuidaAutomaticamente == false
+          )
+          || (
+            // Distribuição em lote, edição de atividade aberta e reabertura na remoção de morador (ADMIN).
+            isHouseAdmin(houseId)
+            && request.resource.data.peso in [2, 5, 8]
+            && !(
+              request.resource.data.diff(resource.data).affectedKeys().hasAny(['concluidaEm'])
+              || request.resource.data.status == 'CONCLUIDA'
+              || resource.data.status == 'CONCLUIDA'
+            )
+          );
+
+        // MEMBER só remove atribuições não concluídas dentro da transação de virada de semana (semanaAtual alterada).
+        allow delete: if isHouseAdmin(houseId)
+          || (
+            isHouseMember(houseId)
+            && resource.data.status != 'CONCLUIDA'
+            && isRolloverTransition(houseId)
+          );
+      }
+    }
+  }
+}

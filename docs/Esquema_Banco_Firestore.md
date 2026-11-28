@@ -165,13 +165,27 @@ Quando um morador conclui uma tarefa:
 
 ### 4. Papéis e Permissões
 
+As regras abaixo são impostas tanto na interface (`SuaVezStateHolder`) quanto no servidor via `firestore.rules` (referenciado em `firebase.json`), exigindo `request.auth != null` em todas as operações:
+
 | Ação | Administrador (`ADMIN`) | Morador (`MEMBER`) |
 |---|:---:|:---:|
-| Editar dados da casa / Regenerar código | ✅ | ❌ |
-| Criar/editar categorias | ✅ | ❌ |
-| Cadastrar tarefas no catálogo recorrente | ✅ | ❌ |
+| Editar dados da casa / Regenerar código / Encerrar casa | ✅ | ❌ |
+| Atualizar `semanaAtual` no rollover semanal automático | ✅ | ✅ *(exclusivamente `semanaAtual`)* |
+| Criar/editar/excluir categorias | ✅ | ❌ |
+| Cadastrar/editar/desativar (soft-delete) tarefas no catálogo recorrente | ✅ | ❌ |
+| Editar/excluir atividades abertas na semana | ✅ | ❌ |
+| Promover morador a Admin / Remover outro morador | ✅ | ❌ |
+| Sair da casa (próprio morador) | ✅ *(após transferir Admin)* | ✅ |
 | Criar tarefas avulsas na semana corrente | ✅ | ✅ |
-| Marcar preferências (Odeio, Tanto faz, Gosto) | ✅ | ✅ |
+| Marcar preferências (`Odeio`, `Tanto faz`, `Gosto`) no próprio perfil | ✅ | ✅ |
 | Escolher tarefas abertas até a cota | ✅ | ✅ |
-| Disparar "Distribuir Pendentes" | ✅ | ✅ |
-| Concluir tarefas atribuídas a si | ✅ | ✅ |
+| Disparar "Distribuir Pendentes" | ✅ | ❌ |
+| Concluir / estornar tarefas atribuídas a si (`responsavelUid == uid`) | ✅ | ✅ |
+
+### 5. Segurança no Backend (`firestore.rules`)
+
+- **`users/{uid}`**: leitura e escrita restritas ao próprio `request.auth.uid` (exceto limpeza de `currentHouseId = null` executada por um `ADMIN` ao remover morador ou encerrar a casa).
+- **`houses/{houseId}`**: `ADMIN` pode alterar metadados e excluir a casa; `MEMBER` pode atualizar exclusivamente `semanaAtual` durante o rollover semanal.
+- **`members/{uid}`**: entrada por convite exige `papel == "MEMBER"` (impedindo auto-promoção para `ADMIN`), `preferences` e `pontosPorMes` são protegidos por `uid`, `ADMIN` pode promover/remover moradores e `MEMBER` pode excluir apenas o próprio documento ao sair.
+- **`categories/{categoryId}` e `tasks/{taskId}`**: leitura para membros da casa e escrita exclusiva para `ADMIN`, com bloqueio de `delete` físico em `tasks` fora da exclusão da casa para reforçar o soft-delete (`ativa = false`).
+- **`assignments/{assignmentId}`**: criação de avulsas e rollover por membros, claim/unclaim pelo morador, conclusão/estorno restritos ao próprio `responsavelUid == request.auth.uid`, e distribuição em lote / edição administrativa exclusivas para `ADMIN`.
