@@ -274,6 +274,29 @@ class SuaVezStateHolderTest {
             state.deleteRecurringTask(aspirarId)
             assertEquals(1, state.uiState.value.recurringTasks.size)
             assertTrue(state.uiState.value.openAssignments.isEmpty())
+            val deletedAspirar = fake.allTasksForHouse(TEST_HOUSE_ID).first { it.id == aspirarId }
+            assertFalse(deletedAspirar.ativa)
+
+            // Tarefa recorrente excluída preserva atribuições já concluídas e não entra na distribuição
+            state.saveRecurringTask(
+                editingId = null,
+                title = "Lavar quintal",
+                category = TaskCategory.LIMPEZA,
+                points = 5,
+                frequency = TaskFrequency.SEMANAL,
+                openInCurrentWeek = true,
+                deadline = TaskDeadline.SABADO,
+            )
+            val quintalOpen = state.uiState.value.openAssignments.single()
+            val quintalId = quintalOpen.recurringTaskId!!
+            state.claimOpenTask(quintalOpen.id)
+            state.toggleTaskDone(quintalOpen.id)
+
+            state.deleteRecurringTask(quintalId)
+            assertEquals(1, state.uiState.value.recurringTasks.size)
+            assertFalse(fake.allTasksForHouse(TEST_HOUSE_ID).first { it.id == quintalId }.ativa)
+            val preservedDone = state.uiState.value.assignments.single { it.recurringTaskId == quintalId }
+            assertTrue(preservedDone.isDone)
         } finally {
             testScope.cancel()
         }
@@ -1583,7 +1606,9 @@ private class FakeSuaVezDataSource(
         semanaAtual: String,
     ): Result<Unit> = runCatching {
         tasksByHouse.value = tasksByHouse.value + (
-            houseId to tasksByHouse.value[houseId].orEmpty().filterNot { it.id == recurringTaskId }
+            houseId to tasksByHouse.value[houseId].orEmpty().map {
+                if (it.id == recurringTaskId) it.copy(ativa = false) else it
+            }
             )
         assignmentsByHouse.value = assignmentsByHouse.value + (
             houseId to assignmentsByHouse.value[houseId].orEmpty().filterNot {
@@ -1723,7 +1748,7 @@ private class FakeSuaVezDataSource(
         semana: String,
     ): Result<List<GreedyDecision>> = runCatching {
         val members = membersByHouse.value[houseId].orEmpty()
-        val tasks = tasksByHouse.value[houseId].orEmpty()
+        val tasks = tasksByHouse.value[houseId].orEmpty().filter { it.ativa }
         val weekAssignments = assignmentsByHouse.value[houseId].orEmpty().filter { it.semana == semana }
         val decisions = AssignmentRepository.computeGreedyDistribution(
             weekAssignments = weekAssignments,
@@ -1748,6 +1773,8 @@ private class FakeSuaVezDataSource(
         assignmentsByHouse.value = assignmentsByHouse.value + (houseId to updated)
         decisions
     }
+
+    fun allTasksForHouse(houseId: String): List<Task> = tasksByHouse.value[houseId].orEmpty()
 
     fun setAssignmentAssignee(
         houseId: String,
